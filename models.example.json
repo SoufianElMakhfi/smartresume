@@ -36,7 +36,7 @@
     "model": "mistral-small-latest",
     "base_url": "https://api.mistral.ai/v1",
     "key_env": "MISTRAL_API_KEY",
-    "note": "Kostenloser Experiment-Plan, europäisch"
+    "note": "Prepaid ab 10 €, europäisch"
   },
   {
     "label": "Claude Haiku 5.5",

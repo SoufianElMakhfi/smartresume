@@ -15,7 +15,7 @@ und Prüfungen wie über die API.
 1. `SmartResume.exe` aus den [Releases](../../releases) herunterladen, in einen eigenen Ordner legen
    (z. B. `Dokumente\SmartResume`) und doppelklicken. Der Browser öffnet sich automatisch.
 2. Mit deiner E-Mail anmelden – lokal wird der Code direkt angezeigt.
-3. Unter **„🔑 KI einrichten“** einen kostenlosen Gemini- oder Mistral-Key einfügen (Link und Anleitung
+3. Unter **„🔑 KI einrichten“** einen kostenlosen Gemini-Key (optional zusätzlich Groq) einfügen (Link und Anleitung
    stehen dabei), **Testen**, **Speichern** – fertig.
 
 Alle Daten (`data/`, `.env` mit den Keys) liegen neben der `.exe` auf deiner Festplatte. Das schwarze Fenster
@@ -37,7 +37,7 @@ Die erste E-Mail-Adresse, die sich anmeldet, wird **Admin** und landet direkt be
 
 ## KI: API mit automatischem Rückfall auf Gemini/ChatGPT
 
-1. **API-Modelle** mit kostenlosen Keys (Gemini, Mistral, Groq) – eingetragen in der App unter
+1. **API-Modelle** mit kostenlosen Keys (Gemini, Groq) oder kostenpflichtigen (Mistral, OpenRouter, Claude) – eingetragen in der App unter
    **„🔑 KI einrichten“** (nur Admins; gespeichert lokal in `.env`). Ist ein Kontingent erschöpft oder ein
    Modell überlastet, springt die App automatisch zum nächsten.
 2. **Abo-Modus**, wenn kein Key eingerichtet ist, alle Kontingente leer sind oder das Tageslimit erreicht
@@ -52,7 +52,6 @@ Der Nutzer schickt den Auftrag dabei selbst ab – es wird nichts automatisiert 
 |---|---|
 | Google Gemini | https://aistudio.google.com/apikey |
 | Groq | https://console.groq.com/keys |
-| Mistral – erst Gratis-Plan „Experiment“ aktivieren (https://admin.mistral.ai/plateforme/subscription, Handynummer bestätigen) | https://console.mistral.ai/api-keys |
 
 Hinweis: Bei kostenlosen Angeboten können Anbieter Eingaben zum Training nutzen – die Prompts enthalten
 Lebenslaufdaten. Limits ändern sich häufig; aktuelle Werte stehen in den Konsolen der Anbieter.

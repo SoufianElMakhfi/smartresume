@@ -33,7 +33,7 @@ DEFAULT_MODELS = [
     {"label": "GPT-OSS 120B (Groq)", "provider": "openai_compat", "model": "openai/gpt-oss-120b",
      "base_url": "https://api.groq.com/openai/v1", "key_env": "GROQ_API_KEY", "note": "Kostenlos, sehr schnell"},
     {"label": "Mistral Small", "provider": "openai_compat", "model": "mistral-small-latest",
-     "base_url": "https://api.mistral.ai/v1", "key_env": "MISTRAL_API_KEY", "note": "Kostenloser Experiment-Plan, europäisch"},
+     "base_url": "https://api.mistral.ai/v1", "key_env": "MISTRAL_API_KEY", "note": "Prepaid ab 10 €, europäisch"},
     {"label": "Claude Haiku 5.5", "provider": "claude", "model": "claude-haiku-5-5",
      "key_env": "ANTHROPIC_API_KEY", "note": "Günstig, sehr zuverlässig"},
     {"label": "Claude Sonnet 5.5", "provider": "claude", "model": "claude-sonnet-5-5",

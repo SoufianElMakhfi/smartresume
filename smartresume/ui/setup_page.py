@@ -30,11 +30,7 @@ def _provider(p: dict) -> str | None:
         c1, c2 = st.columns([3, 1])
         status = "✅ eingerichtet" if config.is_set(env) else "– noch kein Key"
         c1.markdown(f"**{p['name']}** {'· kostenlos' if p['free'] else ''}  \n:gray[{status}]")
-        if p.get("plan_url"):   # Anbieter, bei dem man erst einen Gratis-Plan aktivieren muss
-            c2.link_button("1. Gratis-Plan ↗", p["plan_url"], use_container_width=True)
-            c2.link_button("2. Key holen ↗", p["url"], use_container_width=True)
-        else:
-            c2.link_button("Key holen ↗", p["url"], use_container_width=True)
+        c2.link_button("Key holen ↗", p["url"], use_container_width=True)
         st.caption(p["how"])
         if config.set_externally(env):
             st.caption("Dieser Key ist auf dem Server fest hinterlegt und kann hier nicht geändert werden.")
