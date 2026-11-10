@@ -190,6 +190,8 @@ def is_profile_usable(profile: dict) -> list[str]:
     pers = profile.get("personal", {})
     if not pers.get("name"):
         missing.append("Name")
+    elif len(pers["name"].split()) < 2:
+        missing.append("Nachname (unter *Persönliches* den vollen Namen eintragen)")
     if not pers.get("email"):
         missing.append("E-Mail")
     if not profile.get("experience") and not profile.get("education"):

@@ -77,7 +77,11 @@ def default_subject(structured: dict) -> str:
 def default_body(structured: dict, profile: dict) -> str:
     cl = structured.get("cover_letter") or {}
     p = profile.get("personal") or {}
-    salutation = cl.get("salutation") or "Sehr geehrte Damen und Herren,"
+    # Immer förmlich: „Sehr geehrte Frau/Herr X“ nur, wenn die Anzeige eine Ansprechperson nennt –
+    # sonst (auch statt „Hallo …“) „Sehr geehrte Damen und Herren“.
+    salutation = (cl.get("salutation") or "").strip()
+    if not salutation.startswith("Sehr geehrte"):
+        salutation = "Sehr geehrte Damen und Herren,"
     title = cl.get("job_title") or (structured.get("job") or {}).get("job_title") or ""
     stelle = f" für die Stelle als {title}" if title else ""
     sign = "\n".join(x for x in (p.get("name", ""), p.get("phone", ""), p.get("email", "")) if x)
@@ -127,11 +131,24 @@ def _connect(acc: dict):
         else:
             server = smtplib.SMTP(host, port, timeout=30)
             server.starttls(context=ssl.create_default_context())
-        server.login(acc["address"], acc["password"].replace(" ", "") if "gmail" in host else acc["password"])
+        pw = acc["password"].replace(" ", "") if "gmail" in host else acc["password"]
+        server.ehlo()
+        if "plain" in server.esmtp_features.get("auth", "").lower().split():
+            # Nur PLAIN versuchen: smtplib.login() probiert nach einer Ablehnung noch LOGIN – Gmail trennt dann
+            # die Verbindung, und statt „Passwort falsch“ käme nur „SMTPServerDisconnected“ an.
+            server.user, server.password = acc["address"], pw
+            server.auth("PLAIN", server.auth_plain)
+        else:
+            server.login(acc["address"], pw)
         return server
     except smtplib.SMTPAuthenticationError as e:
-        raise MailError("Anmeldung beim E-Mail-Anbieter fehlgeschlagen – Adresse oder (App-)Passwort stimmt nicht. "
-                        "Bei Gmail brauchst du ein App-Passwort, nicht dein normales Passwort.") from e
+        if "gmail" in host:
+            n = len(acc["password"].replace(" ", ""))
+            raise MailError("Gmail hat die Anmeldung abgelehnt („Username and Password not accepted“). Hier "
+                            "funktioniert nur ein **App-Passwort** (16 Buchstaben), nicht dein normales "
+                            "Google-Passwort" + (f" – eingegeben wurden {n} Zeichen" if n != 16 else "") +
+                            ". Bestätigung in zwei Schritten muss aktiv sein.") from e
+        raise MailError("Anmeldung beim E-Mail-Anbieter fehlgeschlagen – Adresse oder Passwort stimmt nicht.") from e
     except (smtplib.SMTPException, OSError) as e:
         raise MailError(f"Keine Verbindung zum Mailserver {host}:{port} ({e.__class__.__name__}).") from e
 

@@ -33,8 +33,10 @@ def test_normalize_coerces_types_and_drops_junk():
 def test_usable_check():
     assert "Name" in is_profile_usable(empty_profile())
     p = empty_profile()
-    p["personal"].update(name="A", email="a@b.de")
+    p["personal"].update(name="Anna", email="a@b.de")
     p["education"] = [{"institution": "Schule"}]
+    assert any("Nachname" in m for m in is_profile_usable(p))   # nur Vorname reicht nicht
+    p["personal"]["name"] = "Anna Beispiel"
     assert is_profile_usable(p) == []
 
 

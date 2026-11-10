@@ -46,9 +46,13 @@ def test_build_message():
 class FakeSMTP:
     sent = []
     fail_login = False
+    esmtp_features: dict = {}
 
     def __init__(self, host, port, timeout=None):
         self.host, self.port = host, port
+
+    def ehlo(self):
+        pass
 
     def starttls(self, context=None):
         pass
@@ -79,3 +83,28 @@ def test_send_and_errors(monkeypatch):
     with pytest.raises(mailer.MailError, match="App-Passwort"):
         mailer.test_account(ACC)
     assert mailer.account_ready(ACC) and not mailer.account_ready({**ACC, "password": ""})
+
+
+def test_body_is_always_formal():
+    prof = {"personal": {"name": "Max Mustermann"}}
+    for sal in ("Hallo Max,", "Liebe Anna,", "", None):
+        body = mailer.default_body({"cover_letter": {"salutation": sal}}, prof)
+        assert body.startswith("Sehr geehrte Damen und Herren,\n\nanbei")
+        assert body.endswith("Mit freundlichen Grüßen\nMax Mustermann")
+
+
+def test_gmail_rejection_is_explained(monkeypatch):
+    class Rejecting(FakeSMTP):
+        esmtp_features = {"auth": "LOGIN PLAIN XOAUTH2"}
+
+        def ehlo(self):
+            pass
+
+        auth_plain = None
+
+        def auth(self, mech, fn):
+            assert mech == "PLAIN"      # kein zweiter Versuch mit LOGIN (Gmail trennt sonst die Verbindung)
+            raise smtplib.SMTPAuthenticationError(535, b"Username and Password not accepted")
+    monkeypatch.setattr(smtplib, "SMTP", Rejecting)
+    with pytest.raises(mailer.MailError, match="App-Passwort.*14 Zeichen"):
+        mailer.test_account({**ACC, "password": "normalesPW1234"})
