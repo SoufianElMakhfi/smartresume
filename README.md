@@ -52,7 +52,7 @@ Der Nutzer schickt den Auftrag dabei selbst ab – es wird nichts automatisiert 
 |---|---|
 | Google Gemini | https://aistudio.google.com/apikey |
 | Groq | https://console.groq.com/keys |
-| Mistral (Experiment-Plan) | https://console.mistral.ai/api-keys |
+| Mistral (Plan „Experiment“: unter „Upgrade“ wählen, Handynummer bestätigen) | https://console.mistral.ai/api-keys |
 
 Hinweis: Bei kostenlosen Angeboten können Anbieter Eingaben zum Training nutzen – die Prompts enthalten
 Lebenslaufdaten. Limits ändern sich häufig; aktuelle Werte stehen in den Konsolen der Anbieter.
