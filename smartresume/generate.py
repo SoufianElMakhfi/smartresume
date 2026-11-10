@@ -155,7 +155,8 @@ def assemble(ai: dict, profile: dict, employment_type: str, extra_info: str = ""
     extra = _parse_extra_skills(extra_info)
     allowed_all = {i.lower(): i for s in profile["skills"] for i in s["items"]}
     allowed_all.update({x.lower(): x for x in extra})
-    skills, used_cats = [], set()
+    skills, used_cats, shown = [], set(), set()   # shown: Skills, die schon im CV stehen (keine Doppelten)
+    lang_cat = bool(profile["languages"])
     for s in ai.get("skills") or []:
         idx = _ref_index(s.get("ref"), "S")
         if idx is not None and 0 <= idx < len(profile["skills"]):
@@ -165,22 +166,37 @@ def assemble(ai: dict, profile: dict, employment_type: str, extra_info: str = ""
         else:
             cat = _match_category(str(s.get("category") or ""), s.get("items") or [], profile)
             pool = allowed_all
-        if cat in used_cats:
+        if cat in used_cats or (lang_cat and cat.lower() == "sprachen"):
             continue
         items = []
         for it in s.get("items") or []:
             key = str(it).strip().lower()
-            if key in pool and pool[key] not in items:
+            if key in pool and key not in shown:
                 items.append(pool[key])
+                shown.add(key)
         if items:
             skills.append({"category": cat, "items": ", ".join(items[:6])})
             used_cats.add(cat)
         if len(skills) >= 5:
             break
     if not skills:  # Fallback: die ersten Kategorien des Profils
-        skills = [{"category": s["category"], "items": ", ".join(s["items"][:6])} for s in profile["skills"][:4]]
-    if extra and not any(x in s["items"] for s in skills for x in extra):
-        skills.append({"category": "Weitere Kenntnisse", "items": ", ".join(extra[:6])})
+        for s in profile["skills"]:
+            if lang_cat and s["category"].lower() == "sprachen":
+                continue
+            items = [i for i in s["items"] if i.lower() not in shown][:6]
+            shown.update(i.lower() for i in items)
+            if items:
+                skills.append({"category": s["category"], "items": ", ".join(items)})
+            if len(skills) >= 4:
+                break
+    # Zusatz-Skills dieser Bewerbung: nur die, die noch nicht im CV stehen – in „Weitere Kenntnisse“
+    missing_extra = [x for x in extra if x.lower() not in shown]
+    if missing_extra:
+        other = next((s for s in skills if s["category"].lower() == "weitere kenntnisse"), None)
+        if other is None:
+            skills.append({"category": "Weitere Kenntnisse", "items": ", ".join(missing_extra[:6])})
+        else:
+            other["items"] = ", ".join([other["items"]] + missing_extra[:6])
     if profile["languages"]:
         skills.append({"category": "Sprachen", "items": ", ".join(
             f"{l['language']} ({l['level']})" if l["level"] else l["language"] for l in profile["languages"])})

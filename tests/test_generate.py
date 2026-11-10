@@ -219,3 +219,16 @@ def test_fact_check_parses_result(profile, monkeypatch):
     s = generate.assemble(json.loads(json.dumps(AI_ANSWER)), profile, "Vollzeit")
     issues, tokens = generate.fact_check(s, profile, CFG, "k")
     assert issues == [out["unsupported"][0]] and tokens == 1300
+
+
+def test_no_duplicate_skills_in_cv(profile):
+    ai = json.loads(json.dumps(AI_ANSWER))
+    first = profile["skills"][0]
+    item = first["items"][0]
+    # KI wählt denselben Skill in zwei Kategorien; Zusatz-Skills enthalten ihn (andere Schreibweise) + einen neuen
+    ai["skills"] = [{"ref": "S1", "items": [item]}, {"ref": "S2", "items": [item] + profile["skills"][1]["items"][:1]}]
+    s = generate.assemble(ai, profile, "Vollzeit", extra_info=f"{item.upper()}, Docker")
+    all_items = [i.strip().lower() for cat in s["skills"] for i in cat["items"].split(",")]
+    assert all_items.count(item.lower()) == 1
+    assert "docker" in all_items and all_items.count("docker") == 1
+    assert sum(1 for c in s["skills"] if c["category"] == "Weitere Kenntnisse") <= 1

@@ -130,9 +130,9 @@ def normalize_profile(data: dict | None) -> dict:
     p["education"] = _dict_list(data.get("education"), {
         "institution": "str", "degree": "str", "start": "str", "end": "str",
         "location": "str", "details": "str"})
-    p["skills"] = [s for s in _dict_list(data.get("skills"), {"category": "str", "items": "list"})
-                   if s["items"]]
-    p["languages"] = _dict_list(data.get("languages"), {"language": "str", "level": "str"})
+    p["skills"] = dedupe_skills(_dict_list(data.get("skills"), {"category": "str", "items": "list"}))
+    p["languages"] = [l for l in _dict_list(data.get("languages"), {"language": "str", "level": "str"})
+                      if l["language"]]
     p["projects"] = _dict_list(data.get("projects"), {
         "name": "str", "description": "str", "stack": "list", "highlights": "list"})
     p["certificates"] = _str_list(data.get("certificates"))
@@ -145,6 +145,40 @@ def normalize_profile(data: dict | None) -> dict:
     if p["design"]["accent_color"] and not _HEX_RE.match(p["design"]["accent_color"]):
         p["design"]["accent_color"] = ""
     return p
+
+
+def dedupe_skills(skills: list[dict]) -> list[dict]:
+    """Jeder Skill nur einmal (Groß-/Kleinschreibung egal, erste Kategorie gewinnt); gleichnamige Kategorien
+    werden zusammengelegt, leere entfernt."""
+    seen: set[str] = set()
+    out: dict[str, dict] = {}
+    for s in skills:
+        cat = _s(s.get("category")) or "Weitere Kenntnisse"
+        target = out.setdefault(cat.lower(), {"category": cat, "items": []})
+        for item in s.get("items") or []:
+            item = _s(item)
+            if item and item.lower() not in seen:
+                seen.add(item.lower())
+                target["items"].append(item)
+    return [s for s in out.values() if s["items"]]
+
+
+def add_skills(profile: dict, items: list[str], category: str = "Weitere Kenntnisse") -> list[str]:
+    """Fügt nur neue Skills hinzu (bestehende Kategorie wird ergänzt). Gibt die wirklich neuen zurück."""
+    have = {i.lower() for s in profile["skills"] for i in s["items"]}
+    new = []
+    for item in items:
+        item = _s(item)
+        if item and item.lower() not in have:
+            have.add(item.lower())
+            new.append(item)
+    if new:
+        target = next((s for s in profile["skills"] if s["category"].lower() == category.lower()), None)
+        if target is None:
+            profile["skills"].append({"category": category, "items": new})
+        else:
+            target["items"] += new
+    return new
 
 
 def guess_link_label(url: str) -> str:

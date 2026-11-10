@@ -1,9 +1,11 @@
-"""Profilseite: CV importieren oder manuell eingeben, Foto, Skills, Stil."""
+"""Profilseite: übersichtlich in 5 Bereichen, alles wird automatisch gespeichert.
+
+👤 Persönlich (mit Foto) · 💼 Werdegang · 🛠 Kenntnisse · 🎯 Wünsche & Stil · 📥 Import
+"""
 from __future__ import annotations
 
 import json
 
-import pandas as pd
 import streamlit as st
 
 from .. import bridge, cv_import, db, llm
@@ -14,12 +16,22 @@ from .common import (branding, chat_bridge, fallback_chain, fmt_tokens, model_pi
 
 LANG_LEVELS = ["Muttersprache", "Verhandlungssicher (C2)", "Fließend (C1)", "Sehr gut (B2)",
                "Gut (B1)", "Grundkenntnisse (A2)", "Anfänger (A1)"]
+TABS = ["👤 Persönlich", "💼 Werdegang", "🛠 Kenntnisse", "🎯 Wünsche & Stil", "📥 Import"]
+
+TEMPLATES = {
+    "experience": {"company": "", "role": "", "start": "", "end": "", "location": "", "bullets": []},
+    "education": {"institution": "", "degree": "", "start": "", "end": "", "location": "", "details": ""},
+    "skills": {"category": "", "items": []},
+    "languages": {"language": "", "level": ""},
+    "projects": {"name": "", "description": "", "stack": [], "highlights": []},
+    "strengths": {"skill": "", "evidence": ""},
+    "links": {"label": "", "url": ""},
+}
 
 
 # ---------------------------------------------------------------------------
-# Entwurfs-Verwaltung: Der Entwurf lebt in session_state und wird erst mit
-# "Speichern" in die DB geschrieben. `rev` erneuert die Widget-Keys, wenn der
-# Entwurf von außen geändert wurde (Import, Entfernen, Verschieben).
+# Entwurf: lebt in session_state; jede Änderung wird sofort gespeichert. `rev` erneuert die Widget-Keys,
+# wenn der Entwurf von außen geändert wurde (Import, Hinzufügen, Entfernen, Verschieben).
 # ---------------------------------------------------------------------------
 def _load_draft(force: bool = False) -> None:
     if force or st.session_state.get("draft_uid") != uid():
@@ -36,8 +48,13 @@ def _k(name: str) -> str:
     return f"p{st.session_state.draft_rev}_{name}"
 
 
-def _list_action(section: str, action: str, i: int) -> None:
-    items = st.session_state.draft[section]
+def _items(section: str) -> list:
+    d = st.session_state.draft
+    return d["personal"]["links"] if section == "links" else d[section]
+
+
+def _list_action(section: str, action: str, i: int = 0) -> None:
+    items = _items(section)
     if action == "del":
         items.pop(i)
     elif action == "up" and i > 0:
@@ -45,33 +62,64 @@ def _list_action(section: str, action: str, i: int) -> None:
     elif action == "down" and i < len(items) - 1:
         items[i + 1], items[i] = items[i], items[i + 1]
     elif action == "add":
-        tpl = {"experience": {"company": "", "role": "", "start": "", "end": "", "location": "", "bullets": []},
-               "education": {"institution": "", "degree": "", "start": "", "end": "", "location": "",
-                             "details": ""}}[section]
-        items.insert(0, tpl)
+        tpl = json.loads(json.dumps(TEMPLATES[section]))
+        if section in ("experience", "education"):
+            items.insert(0, tpl)          # neueste Station zuerst
+        else:
+            items.append(tpl)
     _bump()
-
-
-def _table(rows: list[dict], columns: dict, key: str, column_config: dict | None = None) -> list[dict]:
-    """Editierbare Tabelle. `columns` mappt Feldname → Spaltentitel."""
-    df = pd.DataFrame([{title: r.get(field, "") for field, title in columns.items()} for r in rows],
-                      columns=list(columns.values()))
-    edited = st.data_editor(df, num_rows="dynamic", hide_index=True, use_container_width=True,
-                            key=_k(key), column_config=column_config)
-    out = []
-    for rec in edited.fillna("").to_dict("records"):
-        row = {field: str(rec.get(title, "")).strip() for field, title in columns.items()}
-        if any(row.values()):
-            out.append(row)
-    return out
 
 
 def _lines(text: str) -> list[str]:
     return [x.strip(" •-\t") for x in (text or "").splitlines() if x.strip(" •-\t")]
 
 
-def _csv(text: str) -> list[str]:
-    return [x.strip() for x in (text or "").split(",") if x.strip()]
+def _row_tools(section: str, i: int, n: int, move: bool = True) -> None:
+    """Kleine Werkzeugleiste: nach oben / nach unten / entfernen."""
+    cols = st.columns([1, 1, 1, 5]) if move else st.columns([1, 7])
+    if move:
+        cols[0].button("↑", key=_k(f"{section}{i}_up"), on_click=_list_action, args=(section, "up", i),
+                       disabled=i == 0, help="Nach oben")
+        cols[1].button("↓", key=_k(f"{section}{i}_down"), on_click=_list_action, args=(section, "down", i),
+                       disabled=i == n - 1, help="Nach unten")
+    cols[2 if move else 0].button("🗑", key=_k(f"{section}{i}_del"), on_click=_list_action,
+                                  args=(section, "del", i), help="Entfernen")
+
+
+def _add_button(section: str, label: str) -> None:
+    st.button(label, key=_k(f"{section}_add"), on_click=_list_action, args=(section, "add"))
+
+
+# ---------------------------------------------------------------------------
+# Vollständigkeit
+# ---------------------------------------------------------------------------
+def _checklist(d: dict, photo: bytes | None) -> list[tuple[str, bool, str]]:
+    p = d["personal"]
+    return [
+        ("Vor- und Nachname", len(p["name"].split()) >= 2, TABS[0]),
+        ("E-Mail und Telefon", bool(p["email"] and p["phone"]), TABS[0]),
+        ("Adresse", bool(p["zip_city"]), TABS[0]),
+        ("Bewerbungsfoto", bool(photo), TABS[0]),
+        ("Berufserfahrung oder Ausbildung", bool(d["experience"] or d["education"]), TABS[1]),
+        ("Skills", any(s["items"] for s in d["skills"]), TABS[2]),
+        ("Sprachen", bool(d["languages"]), TABS[2]),
+        ("Verfügbarkeit", bool(d["preferences"]["availability"]), TABS[3]),
+    ]
+
+
+def _progress(d: dict, photo: bytes | None) -> None:
+    checks = _checklist(normalize_profile(d), photo)
+    done = sum(ok for _, ok, _ in checks)
+    missing = is_profile_usable(normalize_profile(d))
+    if done == len(checks):
+        st.success("Dein Profil ist vollständig – bereit für Bewerbungen.", icon="✅")
+        return
+    with st.container(border=True):
+        st.progress(done / len(checks), text=f"**Profil zu {round(100 * done / len(checks))} % vollständig**")
+        st.markdown("  \n".join(f"{'✅' if ok else '⬜'} {label}" + ("" if ok else f" → *{tab}*")
+                                for label, ok, tab in checks))
+        if missing:
+            st.caption("⚠️ Pflicht für Bewerbungen: " + ", ".join(missing))
 
 
 # ---------------------------------------------------------------------------
@@ -81,158 +129,300 @@ def render() -> None:
     stored = db.get_profile(uid())
 
     st.title("Mein Profil")
-    missing = is_profile_usable(normalize_profile(d))
-    if missing:
-        st.info("Noch nicht bereit für Bewerbungen. Es fehlt: **" + ", ".join(missing) + "**. "
-                "Am schnellsten: Lebenslauf im Tab *Import* hochladen.", icon="ℹ️")
+    st.caption("✅ Alles wird automatisch gespeichert – auch nach Abmelden oder Neustart.")
+    empty = not (d["experience"] or d["education"] or d["personal"]["name"])
+    if empty:
+        with st.container(border=True):
+            st.markdown("### 🚀 Schnellstart: Lebenslauf hochladen")
+            st.caption("Die KI füllt dein Profil in einer Minute aus – danach nur noch prüfen. "
+                       "Oder unten alles selbst eintragen.")
+            _cv_import(stored)
+    _progress(d, stored["photo"])
 
-    tabs = st.tabs(["📥 Import", "👤 Persönliches", "💼 Erfahrung", "🎓 Ausbildung", "🛠 Skills",
-                    "🚀 Projekte & Stärken", "⚙️ Rahmen & Stil", "🖼 Foto & Design"])
     new = json.loads(json.dumps(d))
-
-    # ── Import ────────────────────────────────────────────────────────────
+    tabs = st.tabs(TABS)
     with tabs[0]:
-        _import_tab(stored)
-
-    # ── Persönliches ──────────────────────────────────────────────────────
+        _personal(d, new, stored)
     with tabs[1]:
-        p = new["personal"]
+        _career(d, new)
+    with tabs[2]:
+        _knowledge(d, new)
+    with tabs[3]:
+        _wishes(d, new, stored)
+    with tabs[4]:
+        if not empty:
+            st.markdown("#### Lebenslauf importieren")
+            _cv_import(stored)
+            st.divider()
+        _backup(stored)
+
+    st.session_state.draft = new
+    # Automatisch speichern: jede Änderung landet sofort in der Datenbank.
+    if normalize_profile(new) != stored["data"]:
+        db.save_profile(uid(), data=new)
+        st.toast("Gespeichert", icon="✅")
+
+
+# ── 👤 Persönlich ────────────────────────────────────────────────────────────
+def _personal(d: dict, new: dict, stored: dict) -> None:
+    p = new["personal"]
+    c_photo, c_form = st.columns([1, 2], gap="large")
+    with c_photo:
+        _photo(stored)
+    with c_form:
+        p["name"] = st.text_input("Vor- und Nachname *", d["personal"]["name"], key=_k("name"),
+                                  placeholder="Max Mustermann")
+        p["headline"] = st.text_input("Berufsbezeichnung", d["personal"]["headline"], key=_k("headline"),
+                                      placeholder="z. B. Wirtschaftsinformatik-Student")
         c1, c2 = st.columns(2)
-        p["name"] = c1.text_input("Vollständiger Name *", d["personal"]["name"], key=_k("name"))
-        p["headline"] = c2.text_input("Berufsbezeichnung", d["personal"]["headline"], key=_k("headline"),
-                                      placeholder="z.B. Kaufmann für Büromanagement")
         p["email"] = c1.text_input("E-Mail *", d["personal"]["email"], key=_k("email"))
         p["phone"] = c2.text_input("Telefon", d["personal"]["phone"], key=_k("phone"))
         p["street"] = c1.text_input("Straße & Nr.", d["personal"]["street"], key=_k("street"))
-        p["zip_city"] = c2.text_input("PLZ & Ort", d["personal"]["zip_city"], key=_k("zip"),
-                                      placeholder="50667 Köln")
-        st.markdown("**Links** (Portfolio, LinkedIn, GitHub, XING …)")
-        p["links"] = _table(d["personal"]["links"], {"label": "Bezeichnung", "url": "URL"}, "links")
-        new["summary"] = st.text_area("Kurzprofil (optional – die KI schreibt pro Stelle ein eigenes)",
-                                      d["summary"], height=100, key=_k("summary"))
+        p["zip_city"] = c2.text_input("PLZ & Ort", d["personal"]["zip_city"], key=_k("zip"), placeholder="50667 Köln")
 
-    # ── Erfahrung ─────────────────────────────────────────────────────────
-    with tabs[2]:
-        st.caption("Neueste Station zuerst. Stichpunkte: eine Tätigkeit pro Zeile – je mehr Substanz hier steht, "
-                   "desto besser kann die KI pro Stelle die passendsten auswählen.")
-        st.button("＋ Station hinzufügen", on_click=_list_action, args=("experience", "add", 0), key=_k("exp_add"))
-        for i, job in enumerate(d["experience"]):
-            title = f"{job['role'] or 'Neue Station'} – {job['company'] or '…'}"
-            with st.expander(title, expanded=not job["company"]):
-                c1, c2 = st.columns(2)
-                e = new["experience"][i]
-                e["role"] = c1.text_input("Position *", job["role"], key=_k(f"exp{i}_role"))
-                e["company"] = c2.text_input("Firma *", job["company"], key=_k(f"exp{i}_company"))
-                c3, c4, c5 = st.columns(3)
-                e["start"] = c3.text_input("Von (MM/JJJJ)", job["start"], key=_k(f"exp{i}_start"))
-                e["end"] = c4.text_input("Bis (MM/JJJJ oder Heute)", job["end"], key=_k(f"exp{i}_end"))
-                e["location"] = c5.text_input("Ort", job["location"], key=_k(f"exp{i}_loc"))
-                e["bullets"] = _lines(st.text_area("Tätigkeiten & Erfolge (eine pro Zeile)",
-                                                   "\n".join(job["bullets"]), height=120,
-                                                   key=_k(f"exp{i}_bullets")))
-                b1, b2, b3, _ = st.columns([1, 1, 1, 4])
-                b1.button("↑", key=_k(f"exp{i}_up"), on_click=_list_action, args=("experience", "up", i))
-                b2.button("↓", key=_k(f"exp{i}_down"), on_click=_list_action, args=("experience", "down", i))
-                b3.button("🗑", key=_k(f"exp{i}_del"), on_click=_list_action, args=("experience", "del", i),
-                          help="Station entfernen")
+    st.markdown("##### 🔗 Links")
+    st.caption("Portfolio, LinkedIn, GitHub, XING … – erscheinen als Symbole auf dem Deckblatt.")
+    links = []
+    for i, link in enumerate(d["personal"]["links"]):
+        c1, c2, c3 = st.columns([2, 5, 1])
+        label = c1.text_input("Bezeichnung", link["label"], key=_k(f"link{i}_label"), placeholder="LinkedIn",
+                              label_visibility="collapsed")
+        url = c2.text_input("Adresse", link["url"], key=_k(f"link{i}_url"), placeholder="https://…",
+                            label_visibility="collapsed")
+        c3.button("🗑", key=_k(f"links{i}_del"), on_click=_list_action, args=("links", "del", i), help="Entfernen")
+        links.append({"label": label.strip(), "url": url.strip()})
+    p["links"] = links
+    _add_button("links", "＋ Link")
 
-    # ── Ausbildung ────────────────────────────────────────────────────────
-    with tabs[3]:
-        st.button("＋ Ausbildung hinzufügen", on_click=_list_action, args=("education", "add", 0),
-                  key=_k("edu_add"))
-        for i, ed in enumerate(d["education"]):
-            with st.expander(f"{ed['degree'] or 'Neuer Eintrag'} – {ed['institution'] or '…'}",
-                             expanded=not ed["institution"]):
-                c1, c2 = st.columns(2)
-                e = new["education"][i]
-                e["degree"] = c1.text_input("Abschluss / Studiengang *", ed["degree"], key=_k(f"edu{i}_deg"))
-                e["institution"] = c2.text_input("Schule / Hochschule / Betrieb *", ed["institution"],
-                                                 key=_k(f"edu{i}_inst"))
-                c3, c4, c5 = st.columns(3)
-                e["start"] = c3.text_input("Von", ed["start"], key=_k(f"edu{i}_start"))
-                e["end"] = c4.text_input("Bis", ed["end"], key=_k(f"edu{i}_end"))
-                e["location"] = c5.text_input("Ort", ed["location"], key=_k(f"edu{i}_loc"))
-                e["details"] = st.text_input("Details (Schwerpunkt, Note …)", ed["details"], key=_k(f"edu{i}_det"))
-                b1, b2, b3, _ = st.columns([1, 1, 1, 4])
-                b1.button("↑", key=_k(f"edu{i}_up"), on_click=_list_action, args=("education", "up", i))
-                b2.button("↓", key=_k(f"edu{i}_down"), on_click=_list_action, args=("education", "down", i))
-                b3.button("🗑", key=_k(f"edu{i}_del"), on_click=_list_action, args=("education", "del", i))
+    st.markdown("##### 📝 Kurzprofil (optional)")
+    new["summary"] = st.text_area("Kurzprofil", d["summary"], height=100, key=_k("summary"),
+                                  label_visibility="collapsed",
+                                  help="Die KI schreibt für jede Stelle ein eigenes – das hier ist nur die Grundlage.",
+                                  placeholder="2–3 Sätze über dich: was du machst, was du kannst, was du suchst.")
 
-    # ── Skills ────────────────────────────────────────────────────────────
-    with tabs[4]:
-        st.markdown("**Fähigkeiten** – Kategorie + Einträge mit Komma getrennt. Die KI wählt pro Stelle "
-                    "nur aus diesen Einträgen aus und erfindet keine neuen.")
-        rows = [{"category": s["category"], "items": ", ".join(s["items"])} for s in d["skills"]]
-        new["skills"] = [{"category": r["category"] or "Weitere Kenntnisse", "items": _csv(r["items"])}
-                         for r in _table(rows, {"category": "Kategorie", "items": "Einträge (kommagetrennt)"},
-                                         "skills")]
-        st.markdown("**Sprachen**")
-        new["languages"] = _table(d["languages"], {"language": "Sprache", "level": "Niveau"}, "langs",
-                                  column_config={"Niveau": st.column_config.SelectboxColumn(
-                                      options=LANG_LEVELS + sorted({l["level"] for l in d["languages"]
-                                                                    if l["level"] not in LANG_LEVELS}))})
-        new["certificates"] = _lines(st.text_area("Zertifikate & Weiterbildungen (eine pro Zeile)",
-                                                  "\n".join(d["certificates"]), height=90, key=_k("certs")))
 
-    # ── Projekte & Stärken ───────────────────────────────────────────────
-    with tabs[5]:
-        st.markdown("**Projekte** (eigene, studentische oder berufliche)")
-        rows = [{"name": p["name"], "description": p["description"], "stack": ", ".join(p["stack"]),
-                 "highlights": "; ".join(p["highlights"])} for p in d["projects"]]
-        new["projects"] = [{"name": r["name"], "description": r["description"], "stack": _csv(r["stack"]),
-                            "highlights": [h.strip() for h in r["highlights"].split(";") if h.strip()]}
-                           for r in _table(rows, {"name": "Name", "description": "Beschreibung",
-                                                  "stack": "Technologien (Komma)", "highlights": "Ergebnisse (;)"},
-                                           "projects")]
-        st.markdown("**Stärken mit Beleg** – z.B. *Organisation* → *Events mit bis zu 2.000 Gästen geplant*. "
-                    "Nur belegte Stärken landen im Anschreiben.")
-        new["strengths"] = _table(d["strengths"], {"skill": "Stärke", "evidence": "Konkreter Beleg"}, "strengths")
+def _photo(stored: dict) -> None:
+    st.markdown("**📷 Bewerbungsfoto**")
+    if stored["photo"]:
+        st.image(stored["photo"], width=150)
+    else:
+        st.caption("Noch kein Foto. Ein freundliches, aktuelles Foto wirkt – ist aber freiwillig.")
+    up = st.file_uploader("Foto hochladen", type=["jpg", "jpeg", "png", "webp"], key="photo_up",
+                          label_visibility="collapsed")
+    # Sofort übernehmen (kein zweiter Klick); file_id verhindert erneutes Verarbeiten beim nächsten Durchlauf
+    if up is not None and st.session_state.get("photo_done") != up.file_id:
+        try:
+            db.save_profile(uid(), photo=prepare_photo(up.getvalue()))
+            st.session_state.photo_done = up.file_id
+            st.toast("Foto gespeichert.", icon="📷")
+            st.rerun()
+        except Exception as e:  # noqa: BLE001 – Pillow wirft diverse Formatfehler
+            st.error(f"Bild konnte nicht verarbeitet werden: {e}")
+    if stored["photo"] and st.button("Foto entfernen", key="photo_del"):
+        db.save_profile(uid(), photo=None)
+        st.rerun()
+    st.caption("Wird automatisch quadratisch zugeschnitten.")
 
-    # ── Rahmen & Stil ─────────────────────────────────────────────────────
-    with tabs[6]:
-        st.markdown("**Rahmenbedingungen** – werden nur genannt, wenn die Stellenanzeige danach fragt.")
-        pr = new["preferences"]
-        c1, c2 = st.columns(2)
-        pr["availability"] = c1.text_input("Verfügbar ab", d["preferences"]["availability"], key=_k("avail"),
-                                           placeholder="sofort / 01.03.2027")
-        pr["notice_period"] = c2.text_input("Kündigungsfrist", d["preferences"]["notice_period"],
-                                            key=_k("notice"), placeholder="3 Monate zum Quartalsende")
-        pr["salary_expectation"] = c1.text_input("Gehaltsvorstellung", d["preferences"]["salary_expectation"],
-                                                 key=_k("salary"), placeholder="45.000 € brutto jährlich")
-        pr["hours_per_week"] = c2.text_input("Wochenstunden (Teilzeit/Werkstudent)",
-                                             d["preferences"]["hours_per_week"], key=_k("hours"),
-                                             placeholder="20")
-        pr["student_status"] = st.text_input("Studium (für Werkstudentenstellen)",
-                                             d["preferences"]["student_status"], key=_k("student"),
-                                             placeholder="Eingeschrieben, B.Sc. Wirtschaftsinformatik, 4. Semester")
-        st.divider()
-        st.markdown("**Schreibstil** (optional) – damit das Anschreiben nach dir klingt.")
+
+# ── 💼 Werdegang ────────────────────────────────────────────────────────────
+def _career(d: dict, new: dict) -> None:
+    st.markdown("##### 💼 Berufserfahrung")
+    st.caption("Neueste Station zuerst. Pro Zeile eine Tätigkeit oder ein Erfolg – je mehr hier steht, desto "
+               "besser wählt die KI pro Stelle das Passende aus.")
+    _add_button("experience", "＋ Station hinzufügen")
+    n = len(d["experience"])
+    for i, job in enumerate(d["experience"]):
+        title = f"**{job['role'] or 'Neue Station'}** · {job['company'] or '…'}" + \
+                (f" · {job['start']}–{job['end']}" if job["start"] else "")
+        with st.expander(title, expanded=not job["company"]):
+            e = new["experience"][i]
+            c1, c2 = st.columns(2)
+            e["role"] = c1.text_input("Position *", job["role"], key=_k(f"exp{i}_role"))
+            e["company"] = c2.text_input("Firma *", job["company"], key=_k(f"exp{i}_company"))
+            c3, c4, c5 = st.columns(3)
+            e["start"] = c3.text_input("Von", job["start"], key=_k(f"exp{i}_start"), placeholder="MM/JJJJ")
+            e["end"] = c4.text_input("Bis", job["end"], key=_k(f"exp{i}_end"), placeholder="MM/JJJJ oder Heute")
+            e["location"] = c5.text_input("Ort", job["location"], key=_k(f"exp{i}_loc"))
+            e["bullets"] = _lines(st.text_area("Tätigkeiten & Erfolge (eine pro Zeile)", "\n".join(job["bullets"]),
+                                               height=120, key=_k(f"exp{i}_bullets")))
+            _row_tools("experience", i, n)
+
+    st.markdown("##### 🎓 Ausbildung & Studium")
+    _add_button("education", "＋ Ausbildung hinzufügen")
+    n = len(d["education"])
+    for i, ed in enumerate(d["education"]):
+        with st.expander(f"**{ed['degree'] or 'Neuer Eintrag'}** · {ed['institution'] or '…'}",
+                         expanded=not ed["institution"]):
+            e = new["education"][i]
+            c1, c2 = st.columns(2)
+            e["degree"] = c1.text_input("Abschluss / Studiengang *", ed["degree"], key=_k(f"edu{i}_deg"))
+            e["institution"] = c2.text_input("Schule / Hochschule / Betrieb *", ed["institution"],
+                                             key=_k(f"edu{i}_inst"))
+            c3, c4, c5 = st.columns(3)
+            e["start"] = c3.text_input("Von", ed["start"], key=_k(f"edu{i}_start"))
+            e["end"] = c4.text_input("Bis", ed["end"], key=_k(f"edu{i}_end"))
+            e["location"] = c5.text_input("Ort", ed["location"], key=_k(f"edu{i}_loc"))
+            e["details"] = st.text_input("Details (Schwerpunkt, Note …)", ed["details"], key=_k(f"edu{i}_det"))
+            _row_tools("education", i, n)
+
+
+# ── 🛠 Kenntnisse ────────────────────────────────────────────────────────────
+def _knowledge(d: dict, new: dict) -> None:
+    st.markdown("##### 🛠 Skills")
+    st.caption("Skill eintippen und **Enter** drücken. Die KI wählt pro Stelle nur aus diesen Einträgen aus und "
+               "erfindet keine neuen. Jeder Skill zählt nur einmal.")
+    skills, seen, dupes = [], {}, []
+    for i, cat in enumerate(d["skills"]):
+        with st.container(border=True):
+            c1, c2 = st.columns([6, 1])
+            name = c1.text_input("Kategorie", cat["category"], key=_k(f"sk{i}_cat"),
+                                 placeholder="Kategorie, z. B. Programmierung", label_visibility="collapsed")
+            c2.button("🗑", key=_k(f"skills{i}_del"), on_click=_list_action, args=("skills", "del", i),
+                      help="Kategorie entfernen")
+            items = st.multiselect("Skills", options=cat["items"], default=cat["items"], accept_new_options=True,
+                                   key=_k(f"sk{i}_items"), placeholder="Skill eintippen + Enter",
+                                   label_visibility="collapsed")
+        kept = []
+        for it in items:
+            it = it.strip()
+            if not it:
+                continue
+            if it.lower() in seen:
+                dupes.append(f"„{it}“ steht schon unter {seen[it.lower()] or 'einer anderen Kategorie'}")
+                continue
+            seen[it.lower()] = name.strip()
+            kept.append(it)
+        skills.append({"category": name.strip(), "items": kept})
+    new["skills"] = skills
+    if dupes:   # doppelte Skills sofort entfernen und Felder neu aufbauen
+        st.session_state.draft = new
+        st.session_state.skill_dupes = dupes
+        _bump()
+        st.rerun()
+    for msg in st.session_state.pop("skill_dupes", []):
+        st.info(msg + " – nicht doppelt übernommen.", icon="ℹ️")
+    _add_button("skills", "＋ Kategorie hinzufügen")
+
+    st.markdown("##### 🌍 Sprachen")
+    langs = []
+    for i, lang in enumerate(d["languages"]):
+        c1, c2, c3 = st.columns([3, 3, 1])
+        name = c1.text_input("Sprache", lang["language"], key=_k(f"lang{i}"), placeholder="z. B. Englisch",
+                             label_visibility="collapsed")
+        levels = LANG_LEVELS if lang["level"] in LANG_LEVELS or not lang["level"] else [lang["level"]] + LANG_LEVELS
+        level = c2.selectbox("Niveau", levels, index=levels.index(lang["level"]) if lang["level"] in levels else 3,
+                             key=_k(f"lang{i}_lvl"), label_visibility="collapsed")
+        c3.button("🗑", key=_k(f"languages{i}_del"), on_click=_list_action, args=("languages", "del", i),
+                  help="Entfernen")
+        langs.append({"language": name.strip(), "level": level})
+    new["languages"] = langs
+    _add_button("languages", "＋ Sprache")
+
+    st.markdown("##### 📜 Zertifikate & Weiterbildungen")
+    new["certificates"] = _lines(st.text_area("Zertifikate", "\n".join(d["certificates"]), height=90,
+                                              key=_k("certs"), label_visibility="collapsed",
+                                              placeholder="Eine pro Zeile, z. B. „Scrum Master (PSM I), 2025“"))
+
+    st.markdown("##### 🚀 Projekte")
+    st.caption("Eigene, studentische oder berufliche Projekte – gut für Berufseinsteiger.")
+    n = len(d["projects"])
+    for i, pr in enumerate(d["projects"]):
+        with st.expander(f"**{pr['name'] or 'Neues Projekt'}**", expanded=not pr["name"]):
+            e = new["projects"][i]
+            e["name"] = st.text_input("Name", pr["name"], key=_k(f"prj{i}_name"))
+            e["description"] = st.text_input("Worum geht es?", pr["description"], key=_k(f"prj{i}_desc"))
+            e["stack"] = st.multiselect("Technologien / Werkzeuge", options=pr["stack"], default=pr["stack"],
+                                        accept_new_options=True, key=_k(f"prj{i}_stack"),
+                                        placeholder="eintippen + Enter")
+            e["highlights"] = _lines(st.text_area("Ergebnisse (eines pro Zeile)", "\n".join(pr["highlights"]),
+                                                  height=80, key=_k(f"prj{i}_hl")))
+            _row_tools("projects", i, n, move=False)
+    _add_button("projects", "＋ Projekt hinzufügen")
+
+    st.markdown("##### 💪 Stärken mit Beleg")
+    st.caption("Nur belegte Stärken landen im Anschreiben – z. B. *Organisation* → *Events mit 2.000 Gästen geplant*.")
+    strengths = []
+    for i, s in enumerate(d["strengths"]):
+        c1, c2, c3 = st.columns([2, 5, 1])
+        skill = c1.text_input("Stärke", s["skill"], key=_k(f"str{i}"), placeholder="Stärke",
+                              label_visibility="collapsed")
+        ev = c2.text_input("Beleg", s["evidence"], key=_k(f"str{i}_ev"), placeholder="Konkreter Beleg",
+                           label_visibility="collapsed")
+        c3.button("🗑", key=_k(f"strengths{i}_del"), on_click=_list_action, args=("strengths", "del", i),
+                  help="Entfernen")
+        strengths.append({"skill": skill.strip(), "evidence": ev.strip()})
+    new["strengths"] = strengths
+    _add_button("strengths", "＋ Stärke")
+
+
+# ── 🎯 Wünsche & Stil ────────────────────────────────────────────────────────
+def _wishes(d: dict, new: dict, stored: dict) -> None:
+    st.markdown("##### 🎯 Rahmenbedingungen")
+    st.caption("Werden nur genannt, wenn die Stellenanzeige danach fragt.")
+    pr = new["preferences"]
+    c1, c2 = st.columns(2)
+    pr["availability"] = c1.text_input("Verfügbar ab", d["preferences"]["availability"], key=_k("avail"),
+                                       placeholder="sofort / 01.03.2027")
+    pr["notice_period"] = c2.text_input("Kündigungsfrist", d["preferences"]["notice_period"], key=_k("notice"),
+                                        placeholder="3 Monate zum Quartalsende")
+    pr["salary_expectation"] = c1.text_input("Gehaltsvorstellung", d["preferences"]["salary_expectation"],
+                                             key=_k("salary"), placeholder="45.000 € brutto jährlich")
+    pr["hours_per_week"] = c2.text_input("Wochenstunden (Teilzeit/Werkstudent)", d["preferences"]["hours_per_week"],
+                                         key=_k("hours"), placeholder="20")
+    pr["student_status"] = st.text_input("🎓 Studium (wichtig für Werkstudentenstellen)",
+                                         d["preferences"]["student_status"], key=_k("student"),
+                                         placeholder="Eingeschrieben, B.Sc. Wirtschaftsinformatik, 4. Semester")
+
+    st.markdown("##### ✍️ Schreibstil (optional)")
+    with st.expander("Damit das Anschreiben nach dir klingt"):
         ws = new["writing_style"]
         ws["tone"] = st.text_input("Ton", d["writing_style"]["tone"], key=_k("tone"),
                                    placeholder="Direkt, bodenständig, kurze Sätze")
         ws["own_words"] = _lines(st.text_area("Typische Sätze von dir (einer pro Zeile)",
-                                              "\n".join(d["writing_style"]["own_words"]), key=_k("own"),
-                                              height=90))
+                                              "\n".join(d["writing_style"]["own_words"]), key=_k("own"), height=90))
         ws["philosophy"] = st.text_area("Arbeitsweise / Philosophie", d["writing_style"]["philosophy"],
                                         key=_k("philo"), height=80)
         ws["forbidden_phrases"] = _lines(st.text_area("Phrasen, die nie vorkommen sollen (eine pro Zeile)",
                                                       "\n".join(d["writing_style"]["forbidden_phrases"]),
                                                       key=_k("forbidden"), height=80))
 
-    # ── Foto & Design ─────────────────────────────────────────────────────
-    with tabs[7]:
-        _photo_tab(stored, new)
+    st.markdown("##### 🎨 Design der Unterlagen")
+    presets = branding()["accent_presets"]
+    current = new["design"]["accent_color"] or branding()["accent_color"]
+    names = list(presets) + ["Eigene Farbe"]
+    default = next((n for n, c in presets.items() if c.lower() == current.lower()), "Eigene Farbe")
+    c1, c2 = st.columns([3, 1])
+    choice = c1.selectbox("Akzentfarbe", names, index=names.index(default), key=_k("accent_preset"))
+    color = presets.get(choice) or c2.color_picker("Eigene Farbe", current, key=_k("accent_custom"))
+    if choice != "Eigene Farbe":
+        c2.color_picker("Vorschau", color, disabled=True, key=_k(f"accent_prev_{choice}"))
+    new["design"]["accent_color"] = color
 
-    st.session_state.draft = new
-    st.divider()
-    # Automatisch speichern: jede Änderung landet sofort in der Datenbank (kein Datenverlust bei
-    # Neustart, Abmelden oder Seitenwechsel). Der Entwurf bleibt erhalten, damit Eingabefelder stabil sind.
-    if normalize_profile(new) != stored["data"]:
-        db.save_profile(uid(), data=new)
-        st.toast("Gespeichert", icon="✅")
-    st.caption("✅ Alle Änderungen werden automatisch gespeichert.")
+    st.markdown("**✒️ Unterschrift** (optional, unter dem Anschreiben)")
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        if stored["signature"]:
+            st.image(stored["signature"], width=150)
+            if st.button("Unterschrift entfernen", key="sig_del"):
+                db.save_profile(uid(), signature=None)
+                st.rerun()
+        else:
+            st.caption("Noch keine Unterschrift.")
+    with c2:
+        up = st.file_uploader("Scan/Foto der Unterschrift", type=["png", "jpg", "jpeg"], key="sig_up",
+                              label_visibility="collapsed")
+        if up is not None and st.session_state.get("sig_done") != up.file_id:
+            try:
+                db.save_profile(uid(), signature=prepare_signature(up.getvalue()))
+                st.session_state.sig_done = up.file_id
+                st.toast("Unterschrift gespeichert.", icon="✒️")
+                st.rerun()
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Bild konnte nicht verarbeitet werden: {e}")
+        st.caption("Auf weißem Papier unterschreiben, abfotografieren – der Hintergrund wird automatisch entfernt.")
 
 
+# ── 📥 Import ────────────────────────────────────────────────────────────────
 def _apply_cv(incoming: dict, mode: str, source: str) -> None:
     base = st.session_state.draft
     merged = incoming if mode.startswith("Ersetzen") else cv_import.merge_profiles(base, incoming)
@@ -243,16 +433,14 @@ def _apply_cv(incoming: dict, mode: str, source: str) -> None:
     _load_draft(force=True)
     st.success(f"Übernommen ({source}): {len(incoming['experience'])} Stationen, "
                f"{len(incoming['education'])} Ausbildungen, {len(incoming['skills'])} Skill-Kategorien. "
-               "Bitte die Tabs kurz prüfen.")
+               "Bitte kurz prüfen.")
 
 
-def _import_tab(stored: dict) -> None:
-    st.markdown("**Lebenslauf hochladen** (PDF, DOCX oder TXT). Die KI liest ihn **einmal** aus – danach "
-                "nutzt jede Bewerbung nur noch dein kompaktes Profil. Das spart pro Bewerbung viele Tokens.")
-    f = st.file_uploader("Lebenslauf", type=["pdf", "docx", "txt"], key="cv_upload",
-                         label_visibility="collapsed")
+def _cv_import(stored: dict) -> None:
+    f = st.file_uploader("Lebenslauf (PDF, DOCX oder TXT)", type=["pdf", "docx", "txt"], key="cv_upload")
+    has_data = bool(st.session_state.draft["experience"] or st.session_state.draft["education"])
     mode = st.radio("Bestehendes Profil", ["Ergänzen (Vorhandenes bleibt)", "Ersetzen"], horizontal=True,
-                    key="cv_mode")
+                    key="cv_mode") if has_data else "Ersetzen"
     picked = model_picker("cv_model", "Modell zum Auslesen",
                           "Schnelle Modelle (Flash-Lite, Groq) reichen für das Auslesen völlig.")
     c1, c2 = st.columns(2)
@@ -306,20 +494,21 @@ def _import_tab(stored: dict) -> None:
         if c2.button("Als Bewerbungsfoto übernehmen", key=f"use_photo_{i}"):
             db.save_profile(uid(), photo=prepare_photo(img))
             st.session_state.photo_candidates = []
-            st.toast("Foto übernommen.", icon="🖼")
+            st.toast("Foto übernommen.", icon="📷")
             st.rerun()
 
     if stored["cv_text"]:
         with st.expander(f"Gespeicherter Lebenslauf-Text ({stored['cv_filename']})"):
             st.text(stored["cv_text"][:5000])
 
-    st.divider()
-    st.markdown("**Profil sichern / übertragen**")
+
+def _backup(stored: dict) -> None:
+    st.markdown("#### Sichern & übertragen")
     c1, c2 = st.columns(2)
-    c1.download_button("⬇ Profil als JSON exportieren", json.dumps(stored["data"], ensure_ascii=False, indent=2),
+    c1.download_button("⬇ Profil als Datei sichern", json.dumps(stored["data"], ensure_ascii=False, indent=2),
                        file_name="profil.json", mime="application/json", use_container_width=True)
-    jf = c2.file_uploader("Profil-JSON importieren", type=["json"], key="json_upload")
-    if jf is not None and c2.button("JSON übernehmen", use_container_width=True):
+    jf = c2.file_uploader("Gesicherte Profil-Datei laden", type=["json"], key="json_upload")
+    if jf is not None and c2.button("Profil-Datei übernehmen", use_container_width=True):
         try:
             raw = json.loads(jf.getvalue().decode("utf-8"))
             prof = from_legacy_master(raw) if "personal_info" in raw else normalize_profile(raw)
@@ -329,58 +518,9 @@ def _import_tab(stored: dict) -> None:
             st.rerun()
         except (json.JSONDecodeError, UnicodeDecodeError, AttributeError) as e:
             st.error(f"Ungültige Datei: {e}")
-    if st.button("🧹 Profil komplett leeren"):
-        st.session_state.confirm_clear = True
-    if st.session_state.get("confirm_clear"):
-        st.warning("Wirklich alle Profildaten löschen? (Foto & Bewerbungen bleiben)")
-        if st.button("Ja, leeren", type="primary"):
+    with st.expander("🧹 Profil komplett leeren"):
+        st.warning("Löscht alle Profildaten (Foto, Unterschrift und Bewerbungen bleiben).")
+        if st.button("Ja, Profil leeren", type="primary"):
             db.save_profile(uid(), data=empty_profile(), cv_text="", cv_filename="")
-            st.session_state.confirm_clear = False
             _load_draft(force=True)
             st.rerun()
-
-
-def _photo_tab(stored: dict, new: dict) -> None:
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Bewerbungsfoto**")
-        if stored["photo"]:
-            st.image(stored["photo"], width=160)
-            if st.button("Foto entfernen"):
-                db.save_profile(uid(), photo=None)
-                st.rerun()
-        up = st.file_uploader("Foto hochladen (JPG/PNG)", type=["jpg", "jpeg", "png", "webp"], key="photo_up")
-        if up is not None and st.button("Foto übernehmen", type="primary"):
-            try:
-                db.save_profile(uid(), photo=prepare_photo(up.getvalue()))
-                st.rerun()
-            except Exception as e:  # noqa: BLE001 – Pillow wirft diverse Formatfehler
-                st.error(f"Bild konnte nicht verarbeitet werden: {e}")
-        st.caption("Wird automatisch quadratisch zugeschnitten und rund auf dem Deckblatt angezeigt.")
-    with c2:
-        st.markdown("**Unterschrift** (optional)")
-        if stored["signature"]:
-            st.image(stored["signature"], width=160)
-            if st.button("Unterschrift entfernen"):
-                db.save_profile(uid(), signature=None)
-                st.rerun()
-        up = st.file_uploader("Scan/Foto der Unterschrift", type=["png", "jpg", "jpeg"], key="sig_up")
-        if up is not None and st.button("Unterschrift übernehmen", type="primary"):
-            try:
-                db.save_profile(uid(), signature=prepare_signature(up.getvalue()))
-                st.rerun()
-            except Exception as e:  # noqa: BLE001
-                st.error(f"Bild konnte nicht verarbeitet werden: {e}")
-        st.caption("Weißer Hintergrund wird automatisch entfernt.")
-    st.divider()
-    st.markdown("**Akzentfarbe der Unterlagen**")
-    presets = branding()["accent_presets"]
-    current = new["design"]["accent_color"] or branding()["accent_color"]
-    names = list(presets) + ["Eigene Farbe"]
-    default = next((n for n, c in presets.items() if c.lower() == current.lower()), "Eigene Farbe")
-    c1, c2 = st.columns([2, 1])
-    choice = c1.selectbox("Farbe", names, index=names.index(default), key=_k("accent_preset"))
-    color = presets.get(choice) or c2.color_picker("Eigene Farbe", current, key=_k("accent_custom"))
-    if choice != "Eigene Farbe":
-        c2.color_picker("Vorschau", color, disabled=True, key=_k(f"accent_prev_{choice}"))
-    new["design"]["accent_color"] = color

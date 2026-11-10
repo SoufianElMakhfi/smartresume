@@ -185,7 +185,11 @@ def test_profile_page_edit_and_save(env):
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
     _btn(at, "👤 Mein Profil").click()
     _run(at)
-    name_input = next(t for t in at.text_input if t.label == "Vollständiger Name *")
+    assert [t.label for t in at.tabs] == ["👤 Persönlich", "💼 Werdegang", "🛠 Kenntnisse", "🎯 Wünsche & Stil",
+                                          "📥 Import"]
+    assert any("vollständig" in str(getattr(x, "value", "")) or "vollständig" in str(getattr(x, "text", ""))
+               for x in at.get("progress"))
+    name_input = next(t for t in at.text_input if t.label == "Vor- und Nachname *")
     assert name_input.value == "Max Mustermann"
     name_input.input("Max M.")
     _run(at)
@@ -194,15 +198,40 @@ def test_profile_page_edit_and_save(env):
     at2 = _login(_run(AppTest.from_file(APP, default_timeout=60)))
     _btn(at2, "👤 Mein Profil").click()
     _run(at2)
-    assert next(t for t in at2.text_input if t.label == "Vollständiger Name *").value == "Max M."
+    assert next(t for t in at2.text_input if t.label == "Vor- und Nachname *").value == "Max M."
     # Station hinzufügen und wieder entfernen
     n = len(db.get_profile(uid)["data"]["experience"])
     _btn(at, "＋ Station hinzufügen").click()
     _run(at)
     assert len(at.session_state.draft["experience"]) == n + 1
-    next(b for b in at.button if b.label == "🗑").click()
+    next(b for b in at.button if b.key and b.key.endswith("_experience0_del")).click()
     _run(at)
     assert len(at.session_state.draft["experience"]) == n
+
+
+def test_profile_skills_as_chips_without_duplicates(env):
+    uid = _user_with_profile()
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _btn(at, "👤 Mein Profil").click()
+    _run(at)
+    skills = db.get_profile(uid)["data"]["skills"]
+    first, second = skills[0], skills[1]
+    boxes = [m for m in at.multiselect if m.label == "Skills"]
+    assert boxes[0].value == first["items"]
+    # neuer Skill in Kategorie 2 + ein Skill, der schon in Kategorie 1 steht (andere Schreibweise)
+    boxes[1].set_value(second["items"] + ["Docker", first["items"][0].upper()])
+    _run(at)
+    saved = db.get_profile(uid)["data"]["skills"]
+    assert "Docker" in saved[1]["items"]
+    assert sum(i.lower() == first["items"][0].lower() for s in saved for i in s["items"]) == 1
+    assert any("nicht doppelt" in i.value for i in at.info)
+    # Sprache hinzufügen
+    _btn(at, "＋ Sprache").click()
+    _run(at)
+    lang_inputs = [t for t in at.text_input if t.placeholder == "z. B. Englisch"]
+    lang_inputs[-1].input("Spanisch")
+    _run(at)
+    assert any(l["language"] == "Spanisch" for l in db.get_profile(uid)["data"]["languages"])
 
 
 @pytest.mark.skipif(render.find_typst() is None, reason="Typst nicht installiert")

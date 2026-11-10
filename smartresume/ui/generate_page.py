@@ -8,7 +8,7 @@ from datetime import date
 import streamlit as st
 
 from .. import bridge, db, generate, llm, mailer, quality, render
-from ..profile import EMPLOYMENT_TYPES, default_employment_type, is_profile_usable
+from ..profile import EMPLOYMENT_TYPES, add_skills, default_employment_type, is_profile_usable
 from ..scrape import ScrapeError, scrape_url
 from .common import (branding, chat_bridge, check_limit, fallback_chain, fmt_tokens, go, model_picker,
                      notify_switch, record_usage, show_findings, uid)
@@ -80,7 +80,11 @@ def _input() -> None:
                             placeholder="Wird der Link nicht gelesen (z.B. Login nötig), hier den Text einfügen.")
     extra = st.text_area("Zusätzliche Skills / Infos für diese Bewerbung (optional)", height=70, key="gen_extra",
                          placeholder="z.B. Figma, Docker, Führerschein Klasse B – nur was wirklich stimmt")
-    keep_extra = st.checkbox("Diese Skills dauerhaft in mein Profil übernehmen", key="gen_keep_extra",
+    have = {i.lower() for s in profile["skills"] for i in s["items"]}
+    known = [x for x in generate._parse_extra_skills(extra) if x.lower() in have]
+    if known:
+        st.caption("Schon in deinem Profil: " + ", ".join(known) + " – wird nicht doppelt aufgeführt.")
+    keep_extra = st.checkbox("Neue Skills dauerhaft in mein Profil übernehmen", key="gen_keep_extra",
                              disabled=not extra.strip())
     focus = st.text_input("Schwerpunkt (optional)", key="gen_focus",
                           placeholder="z.B. 'Betone meine Erfahrung im Kundenservice'")
@@ -120,8 +124,10 @@ def _input() -> None:
         return
 
     if keep_extra and extra.strip():
-        profile["skills"].append({"category": "Weitere Kenntnisse", "items": generate._parse_extra_skills(extra)})
+        added = add_skills(profile, generate._parse_extra_skills(extra))   # nur neue, keine Doppelten
         db.save_profile(uid(), data=profile)
+        if added:
+            st.toast("Ins Profil übernommen: " + ", ".join(added), icon="✅")
         profile = db.get_profile(uid())["data"]
         st.session_state.pop("draft_uid", None)  # Profilentwurf neu laden
 

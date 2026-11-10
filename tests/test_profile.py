@@ -74,3 +74,17 @@ def test_import_master_profile_format():
     assert "E1.1" in text and "A1:" in text and "S1 " in text
     # Kompakter als das alte JSON-Dumping
     assert len(text) < len(json.dumps(legacy, ensure_ascii=False, indent=2)) * 0.6
+
+
+def test_skills_are_deduplicated_and_added_once():
+    from smartresume.profile import add_skills
+    p = normalize_profile({"skills": [{"category": "Web", "items": ["React", "react", "CSS"]},
+                                      {"category": "web", "items": ["HTML"]},
+                                      {"category": "Tools", "items": ["CSS", "Git"]},
+                                      {"category": "Leer", "items": []}]})
+    assert p["skills"] == [{"category": "Web", "items": ["React", "CSS", "HTML"]},
+                           {"category": "Tools", "items": ["Git"]}]
+    assert add_skills(p, ["git", "Docker", "Figma", "docker"]) == ["Docker", "Figma"]
+    assert add_skills(p, ["Docker", "Jira"]) == ["Jira"]
+    assert [s["category"] for s in p["skills"]].count("Weitere Kenntnisse") == 1
+    assert p["skills"][-1]["items"] == ["Docker", "Figma", "Jira"]
