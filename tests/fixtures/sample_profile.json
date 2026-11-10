@@ -1,0 +1,95 @@
+{
+  "personal_info": {
+    "name": "Max Mustermann",
+    "email": "max.mustermann@example.com",
+    "phone": "+49 123 4567890",
+    "location": "Musterstraße 1, 50667 Köln",
+    "linkedin": "https://www.linkedin.com/in/max-mustermann-example/",
+    "github": "https://github.com/example",
+    "portfolio": "https://example.com"
+  },
+  "availability": "ab sofort",
+  "salary_expectation": "39.000–42.000 € brutto jährlich",
+  "professional_summary": "E-Commerce Manager bei Nordwind Commerce und Webentwickler mit Praxis in Next.js, Shopify und Python.",
+  "personal_voice": {
+    "tone": "Direkt, ehrlich, bodenständig. Kurze Sätze.",
+    "own_words": ["Ich lerne schnell und arbeite mich selbstständig in neue Themen ein."],
+    "philosophy": "Ich arbeite mich schnell in neue Themen ein, weil ich es gewohnt bin, Probleme selbst zu lösen.",
+    "forbidden_phrases": ["Mit großer Begeisterung", "Hiermit bewerbe ich mich"]
+  },
+  "experience": [
+    {
+      "company": "Nordwind Commerce",
+      "role": "E-Commerce Manager (Teilzeit)",
+      "start_date": "12/2025",
+      "end_date": "Heute",
+      "location": "Köln, Deutschland",
+      "responsibilities_pool": [
+        {"text": "Technische Betreuung des Shopify-Systems", "tags": ["tech", "ecommerce"]},
+        {"text": "Strategische Ausrichtung des E-Commerce-Bereichs", "tags": ["ecommerce"]},
+        {"text": "Optimierung der Ladezeiten auf 95+ PageSpeed Scores", "tags": ["tech"]}
+      ]
+    },
+    {
+      "company": "Pixelwerk Digital",
+      "role": "Werkstudent Webentwicklung",
+      "start_date": "05/2024",
+      "end_date": "11/2025",
+      "location": "Köln, Deutschland",
+      "responsibilities_pool": [
+        {"text": "Entwicklung von Kundenwebsites mit Next.js und TypeScript", "tags": ["tech"]},
+        {"text": "Backend-Logik mit Python und Django", "tags": ["tech"]}
+      ]
+    },
+    {
+      "company": "Musterhandel GmbH",
+      "role": "Kaufmännischer Mitarbeiter",
+      "start_date": "01/2021",
+      "end_date": "04/2024",
+      "location": "Bonn, Deutschland",
+      "responsibilities_pool": [
+        {"text": "Budgetkontrolle und Rechnungsprüfung", "tags": ["verwaltung"]},
+        {"text": "Kundenkommunikation per Telefon und E-Mail", "tags": ["verwaltung"]}
+      ]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Beispiel Akademie",
+      "degree": "Weiterbildung: Webentwicklung und agiles Projektmanagement",
+      "start_date": "11/2023",
+      "end_date": "04/2024",
+      "location": "Online",
+      "details": "Zertifizierter Bildungsträger"
+    },
+    {
+      "institution": "Berufskolleg Musterstadt",
+      "degree": "Kaufmann für Büromanagement",
+      "start_date": "08/2018",
+      "end_date": "07/2021",
+      "location": "Bonn, Deutschland",
+      "details": ""
+    }
+  ],
+  "skills": {
+    "Frontend": {"items": ["Next.js / React", "TypeScript / JavaScript", "HTML / CSS", "Tailwind CSS"], "tags": ["tech"]},
+    "Backend": {"items": ["Python", "Django", "REST-APIs"], "tags": ["tech"]},
+    "Performance & UX": {"items": ["95+ PageSpeed Scores", "Core Web Vitals"], "tags": ["tech"]},
+    "E-Commerce": {"items": ["Shopify", "Liquid"], "tags": ["ecommerce"]},
+    "Organisation": {"items": ["Projektplanung", "Budgetkontrolle"], "tags": ["verwaltung"]},
+    "Sprachen": {"items": ["Deutsch (Muttersprache)", "Englisch (B2)"], "tags": []}
+  },
+  "transferable_skills": [
+    {"skill": "Python", "context": "Eingesetzt bei Pixelwerk Digital für Backend-Logik mit Django.", "tags": ["tech"]}
+  ],
+  "projects": [
+    {
+      "name": "Fixit",
+      "tagline": "Mobile App, die Kunden und Handwerker verbindet",
+      "stack": ["Flutter", "Firebase"],
+      "highlights": ["Schadensanalyse über Fotos"],
+      "type": "Eigenprojekt",
+      "tags": ["tech"]
+    }
+  ]
+}

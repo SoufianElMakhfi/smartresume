@@ -1,0 +1,74 @@
+import json
+from datetime import date
+from pathlib import Path
+
+from smartresume.profile import (
+    compact_profile_text, empty_profile, from_legacy_master, is_profile_usable,
+    normalize_profile, profile_city, total_experience_years,
+)
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_empty_profile_roundtrip():
+    assert normalize_profile(empty_profile()) == empty_profile()
+    assert normalize_profile(None) == empty_profile()
+
+
+def test_normalize_coerces_types_and_drops_junk():
+    p = normalize_profile({
+        "personal": {"name": "  Anna  ", "links": [{"url": "github.com/anna"}, {"label": "x"}]},
+        "experience": [{"company": "ACME", "bullets": "Eins\nZwei; Drei"}, "kaputt", {}],
+        "skills": [{"category": "Leer", "items": []}, {"category": "Tools", "items": "Excel, Word (Office 365)"}],
+        "design": {"accent_color": "rot"},
+    })
+    assert p["personal"]["name"] == "Anna"
+    assert p["personal"]["links"] == [{"label": "GitHub", "url": "https://github.com/anna"}]
+    assert len(p["experience"]) == 1
+    assert p["experience"][0]["bullets"] == ["Eins", "Zwei", "Drei"]
+    assert p["skills"] == [{"category": "Tools", "items": ["Excel", "Word (Office 365)"]}]
+    assert p["design"]["accent_color"] == ""
+
+
+def test_usable_check():
+    assert "Name" in is_profile_usable(empty_profile())
+    p = empty_profile()
+    p["personal"].update(name="A", email="a@b.de")
+    p["education"] = [{"institution": "Schule"}]
+    assert is_profile_usable(p) == []
+
+
+def test_experience_years_merges_overlaps():
+    p = normalize_profile({"experience": [
+        {"company": "A", "start": "01/2020", "end": "12/2021"},
+        {"company": "B", "start": "06/2021", "end": "12/2022"},  # überlappt
+    ]})
+    assert 2.9 <= total_experience_years(p) <= 3.1
+
+
+def test_experience_years_heute():
+    y = date.today().year
+    p = normalize_profile({"experience": [{"company": "A", "start": f"01/{y - 1}", "end": "Heute"}]})
+    assert 0.9 <= total_experience_years(p) <= 2.0
+
+
+def test_city():
+    p = empty_profile()
+    p["personal"]["zip_city"] = "51069 Köln"
+    assert profile_city(p) == "Köln"
+
+
+def test_import_master_profile_format():
+    legacy = json.loads((Path(__file__).resolve().parent / "fixtures" / "sample_profile.json").read_text(encoding="utf-8"))
+    p = from_legacy_master(legacy)
+    assert p["personal"]["name"] == "Max Mustermann"
+    assert p["personal"]["zip_city"].endswith("Köln")
+    assert len(p["experience"]) == len(legacy["experience"])
+    assert all(job["bullets"] for job in p["experience"])
+    assert any(s["category"] == "Frontend" for s in p["skills"])
+    assert not any(s["category"].lower() == "sprachen" for s in p["skills"])
+    assert p["writing_style"]["forbidden_phrases"]
+    text = compact_profile_text(p)
+    assert "E1.1" in text and "A1:" in text and "S1 " in text
+    # Kompakter als das alte JSON-Dumping
+    assert len(text) < len(json.dumps(legacy, ensure_ascii=False, indent=2)) * 0.6

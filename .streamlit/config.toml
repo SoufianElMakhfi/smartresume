@@ -1,0 +1,9 @@
+[server]
+headless = true
+maxUploadSize = 10
+
+[browser]
+gatherUsageStats = false
+
+# Port bei Hostern (Railway/Render …) per Startbefehl setzen:
+#   streamlit run app.py --server.port $PORT
