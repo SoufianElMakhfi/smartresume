@@ -1,4 +1,5 @@
 # Baut SmartResume.exe und hängt sie an das GitHub-Release.
+# (Kein zusätzliches Build-Artefakt: Private Repos haben nur 500 MB Artefakt-Speicher, die .exe hat ~140 MB.)
 # Auslösen: Tag pushen, z. B.  git tag v1.0.0 && git push origin v1.0.0
 name: Release (Windows-EXE)
 
@@ -28,11 +29,6 @@ jobs:
         run: python build_exe.py
       - name: EXE-Selbsttest (Module, PDF, Startseite)
         run: dist\SmartResume.exe --selftest
-      - name: Als Build-Artefakt speichern
-        uses: actions/upload-artifact@v4
-        with:
-          name: SmartResume-windows
-          path: dist/SmartResume.exe
       - name: An Release anhängen
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
