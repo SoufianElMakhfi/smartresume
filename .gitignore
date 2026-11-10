@@ -36,3 +36,8 @@ Thumbs.db
 # ── Laufzeitdaten (Nutzer, Profile, Bewerbungen) ─────────────────────────────
 data/
 .pytest_cache/
+
+# ── Build der SmartResume.exe ────────────────────────────────────────────────
+build/
+dist/
+*.spec

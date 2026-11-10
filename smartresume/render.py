@@ -11,9 +11,10 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
+from . import paths
 from .profile import link_icon, profile_city
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = paths.app_dir()
 TEMPLATE = ROOT / "template.typ"
 FONTS = ROOT / "fonts"
 ICONS = ROOT / "icons"

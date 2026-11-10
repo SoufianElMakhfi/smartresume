@@ -11,7 +11,8 @@ import os
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from . import paths
+
 
 DEFAULT_BRANDING = {
     "app_name": "SmartResume",
@@ -37,7 +38,7 @@ _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 def load_branding() -> dict:
     b = json.loads(json.dumps(DEFAULT_BRANDING))
-    path = Path(os.environ.get("SMARTRESUME_BRANDING", ROOT / "branding.json"))
+    path = Path(os.environ.get("SMARTRESUME_BRANDING", paths.home_dir() / "branding.json"))
     if path.exists():
         try:
             override = json.loads(path.read_text(encoding="utf-8"))

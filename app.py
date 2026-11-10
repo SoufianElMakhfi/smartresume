@@ -1,28 +1,24 @@
 """SmartResume – Streamlit-Einstieg.
 
 Start:  streamlit run app.py
-Konfiguration: .env / .env.local (API-Keys), branding.json (Whitelabel), models.json (KI-Modelle)
+Konfiguration: .env (KI-Keys – auch in der App unter „KI einrichten“), branding.json, models.json
 """
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
 
 ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# Umgebungsvariablen > .env.local > .env (ohne zusätzliche Abhängigkeit)
-for _name in (".env.local", ".env"):
-    _p = ROOT / _name
-    if _p.exists():
-        for _line in _p.read_text(encoding="utf-8").splitlines():
-            if "=" in _line and not _line.lstrip().startswith("#"):
-                _k, _v = _line.split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+from smartresume import auth, config, db, paths  # noqa: E402
 
-from smartresume import auth, db  # noqa: E402
+config.load_env()  # KI-Keys usw. aus .env neben dem Programm
 from smartresume.branding import load_branding  # noqa: E402
 
 BR = load_branding()
@@ -38,8 +34,10 @@ st.session_state.branding = BR
 
 
 def _logo() -> None:
-    if BR["logo"] and (ROOT / BR["logo"]).exists():
-        st.image(str(ROOT / BR["logo"]), width=180)
+    logo = next((d / BR["logo"] for d in (paths.home_dir(), paths.app_dir()) if BR["logo"] and (d / BR["logo"]).exists()),
+                None)
+    if logo:
+        st.image(str(logo), width=180)
     else:
         st.markdown(f"## {BR['page_icon']} {BR['app_name']}")
 
@@ -128,13 +126,21 @@ def _send_code(email: str) -> None:
     st.session_state.login_dev_code = code if (not sent and _is_local()) else None
 
 
+def _any_ai_key() -> bool:
+    from smartresume import llm
+    return any(llm.resolve_key(m) for m in llm.load_models())
+
+
 def _complete_login(email: str) -> None:
     user = db.get_user_by_email(email)
     page = "generate"
     if not user:
-        db.create_user(email, is_admin=db.needs_setup())     # erstes Konto = Admin
+        first = db.needs_setup()
+        db.create_user(email, is_admin=first)                # erstes Konto = Admin
         user = db.get_user_by_email(email)
         page = "profile"                                     # neue Nutzer starten beim Profil
+        if first and not _any_ai_key():
+            page = "setup"                                   # Ersteinrichtung: zuerst kostenlose KI verbinden
     for k in _LOGIN_KEYS:
         st.session_state.pop(k, None)
     st.session_state.user = user
@@ -226,12 +232,14 @@ def _login() -> None:
 # Hauptnavigation
 # ---------------------------------------------------------------------------
 def _main() -> None:
-    from smartresume.ui import admin_page, generate_page, profile_page, settings_page, tracking_page
+    from smartresume.ui import (admin_page, generate_page, profile_page, settings_page, setup_page,
+                                tracking_page)
 
     user = st.session_state.user
     pages = {"generate": "✨ Neue Bewerbung", "profile": "👤 Mein Profil", "tracking": "📋 Meine Bewerbungen",
              "settings": "⚙️ Einstellungen"}
     if user["is_admin"]:
+        pages["setup"] = "🔑 KI einrichten"
         pages["admin"] = "🛡 Verwaltung"
     st.session_state.setdefault("page", "generate")
     if st.session_state.page not in pages:
@@ -255,7 +263,8 @@ def _main() -> None:
             st.caption(BR["footer"])
 
     {"generate": generate_page.render_page, "profile": profile_page.render, "tracking": tracking_page.render,
-     "settings": settings_page.render, "admin": admin_page.render}[st.session_state.page]()
+     "settings": settings_page.render, "setup": setup_page.render,
+     "admin": admin_page.render}[st.session_state.page]()
     _write_cookie(st.session_state.get("session_token", ""))  # angemeldet bleiben (30 Tage)
 
 

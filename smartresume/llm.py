@@ -17,7 +17,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from . import paths
+
 
 # Stand 11/2026 live geprüft. Gemini-Aliase (*-latest) verhindern, dass die App
 # bricht, wenn Google alte Versionen abschaltet. Reihenfolge = Fallback-Reihenfolge:
@@ -81,7 +82,7 @@ class LLMResult:
 
 
 def load_models() -> list[dict]:
-    path = Path(os.environ.get("SMARTRESUME_MODELS", ROOT / "models.json"))
+    path = Path(os.environ.get("SMARTRESUME_MODELS", paths.home_dir() / "models.json"))
     if path.exists():
         try:
             models = json.loads(path.read_text(encoding="utf-8"))

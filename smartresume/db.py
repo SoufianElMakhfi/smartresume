@@ -1,7 +1,7 @@
 """SQLite-Persistenz: Nutzer, Profile (inkl. Foto/Unterschrift/CV-Rohtext) und Bewerbungen.
 
-Alles liegt lokal in EINER Datei auf der Festplatte – Standard: data/smartresume.db
-(nicht im Git, Pfad änderbar über SMARTRESUME_DB). Kein Cloud-Dienst nötig; zum Sichern
+Alles liegt lokal in EINER Datei auf der Festplatte – Standard: data/smartresume.db neben dem
+Programm (nicht im Git, Pfad änderbar über SMARTRESUME_DB). Kein Cloud-Dienst nötig; zum Sichern
 genügt es, diese Datei zu kopieren.
 
 Alle Abfragen sind nach user_id getrennt – ein Nutzer sieht nie Daten eines anderen.
@@ -17,16 +17,15 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
+from . import paths
 from .profile import empty_profile, normalize_profile
 
-ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DB = ROOT / "data" / "smartresume.db"
 
 STATUS_OPTIONS = ["Beworben", "Interview", "Angebot", "Absage", "Zurückgezogen"]
 
 
 def db_path() -> Path:
-    return Path(os.environ.get("SMARTRESUME_DB", DEFAULT_DB))
+    return Path(os.environ.get("SMARTRESUME_DB", paths.data_dir() / "smartresume.db"))
 
 
 @contextmanager

@@ -21,7 +21,7 @@ echo Erster Start: SmartResume wird eingerichtet ...
 
 :start
 echo SmartResume startet - der Browser oeffnet sich gleich. Dieses Fenster offen lassen.
-".venv\Scripts\python.exe" -m streamlit run app.py
+".venv\Scripts\python.exe" launcher.py
 exit /b 0
 
 :fail

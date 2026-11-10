@@ -10,27 +10,36 @@ und Prüfungen wie über die API.
 
 ## Schnellstart
 
-**Windows, ohne Vorkenntnisse:** Python installieren (https://www.python.org/downloads/, Haken bei
-„Add python.exe to PATH“), dann **`SmartResume starten.bat`** doppelklicken. Beim ersten Start richtet sich
-alles selbst ein; danach öffnet sich die App im Browser.
+**Windows – eine Datei, nichts installieren:**
 
-Manuell (Windows, macOS, Linux):
+1. `SmartResume.exe` aus den [Releases](../../releases) herunterladen, in einen eigenen Ordner legen
+   (z. B. `Dokumente\SmartResume`) und doppelklicken. Der Browser öffnet sich automatisch.
+2. Mit deiner E-Mail anmelden – lokal wird der Code direkt angezeigt.
+3. Unter **„🔑 KI einrichten“** einen kostenlosen Gemini- oder Mistral-Key einfügen (Link und Anleitung
+   stehen dabei), **Testen**, **Speichern** – fertig.
+
+Alle Daten (`data/`, `.env` mit den Keys) liegen neben der `.exe` auf deiner Festplatte. Das schwarze Fenster
+offen lassen; Schließen beendet SmartResume. Hinweis: Windows SmartScreen kann bei neuen, nicht signierten
+Programmen warnen („Weitere Informationen“ → „Trotzdem ausführen“).
+
+**Aus dem Quellcode (Windows, macOS, Linux):** Python 3.11+ installieren, dann unter Windows
+`SmartResume starten.bat` doppelklicken – oder:
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env                 # optional: KI-Keys und SMTP eintragen
-streamlit run app.py
+python launcher.py                   # oder: streamlit run app.py
 ```
 
 Für die PDF-Erstellung reicht das Python-Paket `typst` (in `requirements.txt`); die Typst-CLI
 (`winget install --id Typst.Typst`, `brew install typst`) wird genutzt, wenn vorhanden.
 
-Die erste E-Mail-Adresse, die sich anmeldet, wird **Admin**.
+Die erste E-Mail-Adresse, die sich anmeldet, wird **Admin** und landet direkt bei „KI einrichten“.
 
 ## KI: API mit automatischem Rückfall auf Gemini/ChatGPT
 
-1. **API-Modelle** aus `.env` (kostenlose Kontingente: Gemini, Groq, Mistral). Ist ein Kontingent
-   erschöpft oder ein Modell überlastet, springt die App automatisch zum nächsten.
+1. **API-Modelle** mit kostenlosen Keys (Gemini, Mistral, Groq) – eingetragen in der App unter
+   **„🔑 KI einrichten“** (nur Admins; gespeichert lokal in `.env`). Ist ein Kontingent erschöpft oder ein
+   Modell überlastet, springt die App automatisch zum nächsten.
 2. **Abo-Modus**, wenn kein Key eingerichtet ist, alle Kontingente leer sind oder das Tageslimit erreicht
    ist: Die App baut den kompletten Auftrag (Regeln + Profil + Stellenanzeige), der Nutzer klickt
    **„Kopieren & Gemini öffnen“** (oder ChatGPT), fügt die Antwort wieder ein – fertig. Die Antwort wird
@@ -78,10 +87,11 @@ Logins). Kein Cloud-Dienst nötig, Backup = diese Datei kopieren. `data/` ist ni
 
 | Datei / Variable | Zweck |
 |---|---|
-| `.env`, `.env.local` | KI-Keys: `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` (alle optional) |
+| `.env`, `.env.local` | KI-Keys (`GEMINI_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` – einfacher über „KI einrichten“), SMTP. Liegt neben dem Programm bzw. der `.exe`. Gesetzte Umgebungsvariablen haben Vorrang. |
 | `branding.json` | Whitelabel: Name, Logo, Farbe, Registrierung/Einladungscode, Tageslimit … (Vorlage: `branding.example.json`) |
 | `models.json` | Eigene Modellliste inkl. lokaler Modelle (Vorlage: `models.example.json`). Reihenfolge = Fallback-Reihenfolge. |
-| `SMARTRESUME_DB` | Pfad der SQLite-DB (Standard `data/smartresume.db`) |
+| `SMARTRESUME_DB` | Pfad der SQLite-DB (Standard `data/smartresume.db` neben dem Programm) |
+| `SMARTRESUME_HOME` | Ordner für `.env`, `branding.json`, `models.json`, `data/` (Standard: Programmordner bzw. Ordner der `.exe`) |
 | `SMARTRESUME_INVITE_CODE` | Einladungscode per Umgebung statt in `branding.json` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Versand der Login-Codes |
 | `SMARTRESUME_URL` | Öffentliche Adresse für den Login-Link in der Mail (Standard: aus der Anfrage) |
@@ -100,13 +110,22 @@ Startbefehl: `streamlit run app.py --server.port $PORT`. Auf Hostern mit flücht
 
 ```bash
 python -m pytest            # Unit-, Render- und UI-Tests (Streamlit AppTest, Fake-KI)
+pip install pyinstaller && python build_exe.py   # baut dist/SmartResume.exe
 ```
 
-Struktur: `smartresume/` (Logik: `auth`, `bridge`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`,
+Ein Tag `v*` (z. B. `git tag v1.0.0 && git push origin v1.0.0`) baut die `.exe` per GitHub Actions und hängt
+sie an das Release.
+
+Struktur: `launcher.py` (Start der App/.exe), `smartresume/` (Logik: `auth`, `bridge`, `config`, `paths`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`,
 `cv_import`, `scrape`, `render`, `branding`) und `smartresume/ui/` (Seiten). `template.typ` liest alle Inhalte
 aus `data.json` – Texte werden nie als Typst-Markup interpretiert. Tests nutzen ein erfundenes Beispielprofil
 (`tests/fixtures/`).
 
-## Schriften
+## Lizenz
 
-`fonts/` enthält Lexend, Montserrat und Poppins unter der SIL Open Font License 1.1 (Lizenztexte im Ordner).
+SmartResume steht unter der **GNU Affero General Public License v3.0** (`LICENSE`): Nutzen, verändern und
+weitergeben ist erlaubt – wer eine veränderte Version weitergibt oder als Online-Dienst anbietet, muss den
+Quellcode dieser Version ebenfalls unter der AGPL veröffentlichen.
+
+Die Schriften in `fonts/` (Lexend, Montserrat, Poppins) stehen unter der SIL Open Font License 1.1
+(Lizenztexte im Ordner).

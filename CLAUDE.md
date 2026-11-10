@@ -17,9 +17,11 @@ zusätzlich live gegen ein echtes Modell prüfen (Keys in `.env`).
 Mehrbenutzer-/Whitelabel-Streamlit-App: Bewerberprofil (CV-Upload oder manuell) + Stellenanzeige →
 maßgeschneiderte Bewerbung als PDF (Typst). Details: `README.md`.
 
-- `app.py` – Einstieg: Login per E-Mail-Code (erste E-Mail = Admin), Navigation
-- `smartresume/` – Logik (`auth`, `bridge`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`, `cv_import`, `scrape`, `render`, `branding`)
-- `smartresume/ui/` – Seiten (Bewerbung, Profil, Meine Bewerbungen, Einstellungen, Verwaltung)
+- `launcher.py` – Start (auch für `SmartResume.exe`, gebaut mit `build_exe.py`); `app.py` – Login per E-Mail-Code (erste E-Mail = Admin), Navigation
+- `smartresume/` – Logik (`auth`, `bridge`, `config`, `paths`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`, `cv_import`, `scrape`, `render`, `branding`)
+- `smartresume/ui/` – Seiten (Bewerbung, Profil, Meine Bewerbungen, Einstellungen, KI einrichten, Verwaltung)
+- Pfade nur über `paths.py`: Programmdateien = `app_dir()`, Nutzerdaten (`.env`, `data/`) = `home_dir()` (bei der .exe neben der .exe)
+- Lizenz: AGPL-3.0
 - `template.typ` – liest alles aus `data.json` (kein String-Templating)
 - KI: API-Modelle aus `.env` mit automatischem Wechsel; ohne Key/bei leerem Kontingent Abo-Modus (`bridge.py`: Kopieren & Einfügen über Gemini/ChatGPT, gleiche Prüfungen)
 - **Keine persönlichen Daten ins Repo** (Open Source). Tests nutzen nur `tests/fixtures/` (erfundenes Profil)

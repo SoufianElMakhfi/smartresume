@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from smartresume import auth, db, llm, render
+from smartresume import auth, config, db, llm, render
 
 ROOT = Path(__file__).resolve().parent.parent
 SAMPLE = Path(__file__).resolve().parent / "fixtures" / "sample_profile.json"
@@ -33,6 +33,11 @@ SENT: dict[str, str] = {}  # E-Mail → zuletzt verschickter Code
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setenv("SMARTRESUME_DB", str(tmp_path / "app.db"))
+    monkeypatch.setenv("SMARTRESUME_HOME", str(tmp_path))   # .env der Tests landet im Temp-Ordner
+    monkeypatch.setattr(config, "_from_file", set())
+    for k in [p["env"] for p in config.PROVIDERS]:           # echte Keys nie benutzen/verändern
+        monkeypatch.setenv(k, "x")
+        monkeypatch.delenv(k)
     SENT.clear()
 
     def fake_send(email, code, app_name="", link=""):
@@ -335,3 +340,34 @@ def test_cv_import_via_chat_mode(env, monkeypatch):
     _paste_answer(at, json.dumps(answer, ensure_ascii=False))
     prof = db.get_profile(uid)["data"]
     assert prof["personal"]["name"] == "Anna Beispiel" and prof["experience"][0]["company"] == "Muster AG"
+
+
+# ---------------------------------------------------------------------------
+# KI einrichten (Keys in der App eintragen)
+# ---------------------------------------------------------------------------
+def test_first_run_without_key_opens_setup_and_saves_key(env, monkeypatch):
+    monkeypatch.delenv("FAKE_KEY")
+    models = [{"label": "Gemini Test", "provider": "fake", "model": "fake-1", "key_env": "GEMINI_API_KEY"}]
+    (env["tmp"] / "models.json").write_text(json.dumps(models))
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)), "max@example.com")
+    assert at.session_state.page == "setup"                    # erstes Konto ohne Key → zuerst KI einrichten
+    assert any("KI einrichten" in t.value for t in at.title)
+    next(t for t in at.text_input if t.key == "setup_GEMINI_API_KEY").input("AIza-test-123")
+    _run(at)
+    next(b for b in at.button if b.key == "test_GEMINI_API_KEY").click()
+    _run(at)
+    assert any("Funktioniert" in m.value for m in at.success)  # Test-Aufruf über das (Fake-)Modell
+    _btn(at, "💾 Speichern").click()
+    _run(at)
+    assert "GEMINI_API_KEY=AIza-test-123" in (env["tmp"] / ".env").read_text(encoding="utf-8")
+    assert config.is_set("GEMINI_API_KEY")
+    _btn(at, "✨ Neue Bewerbung").click()
+    _run(at)
+    assert not any("Keine KI-API eingerichtet" in i.value for i in at.info)   # sofort einsatzbereit
+
+
+def test_setup_page_is_admin_only(env):
+    db.create_user("chef@example.com", is_admin=True)
+    db.create_user("bernd@example.com")
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)), "bernd@example.com")
+    assert not any(b.label == "🔑 KI einrichten" for b in at.button)

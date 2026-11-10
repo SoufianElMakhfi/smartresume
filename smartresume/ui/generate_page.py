@@ -60,6 +60,8 @@ def _input() -> None:
         st.info("Keine KI-API eingerichtet – kein Problem: Du erstellst die Bewerbung kostenlos mit deinem "
                 "eigenen **Gemini**- oder **ChatGPT**-Konto (Kopieren & Einfügen, dauert ca. 30 Sekunden länger).",
                 icon="💬")
+        if st.session_state.user.get("is_admin") and st.button("🔑 Kostenlosen KI-Key einrichten (2 Minuten)"):
+            go("setup")
     etype = st.segmented_control("Beschäftigungsart", EMPLOYMENT_TYPES, default="Vollzeit", key="gen_etype") \
         or "Vollzeit"
     if etype == "Werkstudent" and not profile["preferences"]["student_status"]:
