@@ -102,15 +102,22 @@ def extract_main_text(page_html: str) -> str:
     return main.get_text("\n", strip=True)
 
 
-def scrape_url(url: str, timeout: int = 15) -> str:
+BLOCKED = "{host} lässt das automatische Auslesen nicht zu (viele Jobbörsen sperren das)."
+
+
+def scrape_url(url: str, timeout: int = 10) -> str:
     import requests
     _check_public_url(url)
+    host = (urlparse(url).hostname or "Die Seite").removeprefix("www.")
     try:
         resp = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
+    except requests.Timeout:
+        # Bot-Schutz antwortet oft gar nicht statt mit 403
+        raise ScrapeError(BLOCKED.format(host=host))
     except requests.RequestException as e:
-        raise ScrapeError(f"Seite nicht erreichbar ({e.__class__.__name__}).")
+        raise ScrapeError(f"{host} ist nicht erreichbar ({e.__class__.__name__}).")
     if resp.status_code in (401, 403, 429):
-        raise ScrapeError(f"Die Seite blockiert automatische Abrufe (HTTP {resp.status_code}).")
+        raise ScrapeError(BLOCKED.format(host=host))
     if resp.status_code >= 400:
         raise ScrapeError(f"Seite nicht ladbar (HTTP {resp.status_code}).")
     resp.encoding = resp.encoding or resp.apparent_encoding

@@ -94,15 +94,15 @@ def _input() -> None:
         return
 
     final_text = ""
-    if job_url.strip():
+    if job_url.strip() and not job_text.strip():   # eingefügter Text hat Vorrang – kein Abruf nötig
         with st.spinner("Stellenanzeige wird geladen …"):
             try:
                 final_text = scrape_url(job_url.strip())
             except ScrapeError as e:
-                if not job_text.strip():
-                    st.error(f"{e} Bitte den Anzeigentext unten einfügen.")
-                    return
-                st.info(f"{e} Nutze den eingefügten Text.")
+                st.error(f"{e}\n\n**So geht's:** Anzeige im Browser öffnen → **Strg+A** (alles markieren) → "
+                         "**Strg+C** (kopieren) → oben ins Feld **„… oder Anzeigentext einfügen“** einfügen → "
+                         "nochmal auf **„Bewerbung erstellen“**. Überflüssiger Text (Menü, Werbung) stört nicht.")
+                return
     if job_text.strip():
         final_text = (final_text + "\n\n" + job_text.strip()).strip() if final_text else job_text.strip()
     if len(final_text) < 80:

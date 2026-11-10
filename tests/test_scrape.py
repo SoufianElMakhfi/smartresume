@@ -38,3 +38,14 @@ def test_fallback_main_text():
 def test_rejects_internal_or_invalid_urls(url):
     with pytest.raises(scrape.ScrapeError):
         scrape.scrape_url(url)
+
+
+def test_timeout_reads_as_blocked(monkeypatch):
+    import requests
+    monkeypatch.setattr(scrape, "_check_public_url", lambda url: None)
+
+    def slow(*a, **k):
+        raise requests.ReadTimeout("x")
+    monkeypatch.setattr(requests, "get", slow)
+    with pytest.raises(scrape.ScrapeError, match="stepstone.de lässt das automatische Auslesen nicht zu"):
+        scrape.scrape_url("https://www.stepstone.de/stellenangebote--x.html")
