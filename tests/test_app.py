@@ -371,3 +371,49 @@ def test_setup_page_is_admin_only(env):
     db.create_user("bernd@example.com")
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)), "bernd@example.com")
     assert not any(b.label == "🔑 KI einrichten" for b in at.button)
+
+
+def test_job_search_rating_and_apply(env, monkeypatch):
+    from smartresume import jobsearch
+    uid = _user_with_profile()
+    jobs = [jobsearch.normalize({"referenznummer": r, "stellenangebotsTitel": t, "firma": "Lumora GmbH",
+                                 "stellenlokationen": [{"adresse": {"plz": "50672", "ort": "Köln"}}], "entfernung": d})
+            for r, t, d in (("R1", "Backend Entwickler (m/w/d)", 3), ("R2", "Frontend Developer (m/w/d)", 8))]
+    texts = {"R1": "Stellentitel: Backend Entwickler\nJava, Spring", "R2": "Stellentitel: Frontend Developer\n"
+             "Unternehmen: Lumora GmbH\nAufgaben: React, TypeScript, Performance."}
+    seen = {}
+
+    def fake_search(**kw):
+        seen.update(kw)
+        return jobs, 2
+    monkeypatch.setattr(jobsearch, "search", fake_search)
+    monkeypatch.setattr(jobsearch, "details_many", lambda js_: texts)
+
+    def fake_ai(cfg, key, system, user, json_mode, max_tokens, temperature):
+        return llm.LLMResult(json.dumps({"ratings": [{"id": "J1", "score": 30, "reason": "Java fehlt"},
+                                                     {"id": "J2", "score": 88, "reason": "React passt"}]}), 900, 100, "f")
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _btn(at, "🔎 Jobs finden").click()
+    _run(at)
+    assert any(t.value == "Jobs finden" for t in at.title)
+    next(t for t in at.text_input if t.label == "Was?").input("Entwickler")
+    next(t for t in at.text_input if t.label == "Wo?").input("Köln")
+    _btn(at, "🔎 Suchen").click()
+    _run(at)
+    assert seen["what"] == "Entwickler" and seen["where"] == "Köln" and seen["max_age"] == 30
+    assert db.get_user_settings(uid)["job_search"]["where"] == "Köln"
+    assert any("2 Stellen gefunden" in m.value for m in at.markdown)
+    assert any("React" in c.value and "TypeScript" in c.value for c in at.caption)  # Profil-Treffer
+
+    monkeypatch.setitem(llm.PROVIDERS, "fake", fake_ai)
+    _btn(at, "🤖 KI-Passung prüfen (2 Stellen)").click()
+    _run(at)
+    assert at.session_state.jobs_ratings["R2"]["score"] == 88
+    titles = [m.value for m in at.markdown if m.value.startswith("**") and "(m/w/d)" in m.value]
+    assert titles[0].startswith("**Frontend Developer")   # nach Passung sortiert
+
+    next(b for b in at.button if b.key == "apply_R2").click()
+    _run(at)
+    assert at.session_state.page == "generate"
+    assert next(t for t in at.text_area if t.label.startswith("… oder Anzeigentext")).value == texts["R2"]
+    assert at.session_state.gen_url == jobs[1]["url"]

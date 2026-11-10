@@ -232,11 +232,11 @@ def _login() -> None:
 # Hauptnavigation
 # ---------------------------------------------------------------------------
 def _main() -> None:
-    from smartresume.ui import (admin_page, generate_page, profile_page, settings_page, setup_page,
+    from smartresume.ui import (admin_page, generate_page, jobs_page, profile_page, settings_page, setup_page,
                                 tracking_page)
 
     user = st.session_state.user
-    pages = {"generate": "✨ Neue Bewerbung", "profile": "👤 Mein Profil", "tracking": "📋 Meine Bewerbungen",
+    pages = {"generate": "✨ Neue Bewerbung", "jobs": "🔎 Jobs finden", "profile": "👤 Mein Profil", "tracking": "📋 Meine Bewerbungen",
              "settings": "⚙️ Einstellungen"}
     if user["is_admin"]:
         pages["setup"] = "🔑 KI einrichten"
@@ -262,7 +262,7 @@ def _main() -> None:
         if BR["footer"]:
             st.caption(BR["footer"])
 
-    {"generate": generate_page.render_page, "profile": profile_page.render, "tracking": tracking_page.render,
+    {"generate": generate_page.render_page, "jobs": jobs_page.render, "profile": profile_page.render, "tracking": tracking_page.render,
      "settings": settings_page.render, "setup": setup_page.render,
      "admin": admin_page.render}[st.session_state.page]()
     _write_cookie(st.session_state.get("session_token", ""))  # angemeldet bleiben (30 Tage)

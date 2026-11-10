@@ -46,7 +46,7 @@ def selftest() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["SMARTRESUME_HOME"] = tmp
         for mod in ("smartresume.ui.generate_page", "smartresume.ui.profile_page", "smartresume.ui.setup_page",
-                    "smartresume.ui.settings_page", "smartresume.ui.tracking_page", "smartresume.ui.admin_page",
+                    "smartresume.ui.settings_page", "smartresume.ui.jobs_page","smartresume.ui.tracking_page", "smartresume.ui.admin_page",
                     "google.genai", "anthropic", "pypdf", "docx", "bs4", "PIL", "pandas", "requests"):
             importlib.import_module(mod)
         print("Module: ok")

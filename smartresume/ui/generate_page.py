@@ -62,8 +62,8 @@ def _input() -> None:
                 icon="💬")
         if st.session_state.user.get("is_admin") and st.button("🔑 Kostenlosen KI-Key einrichten (2 Minuten)"):
             go("setup")
-    etype = st.segmented_control("Beschäftigungsart", EMPLOYMENT_TYPES, default="Vollzeit", key="gen_etype") \
-        or "Vollzeit"
+    st.session_state.setdefault("gen_etype", "Vollzeit")   # kann von „Jobs finden“ vorbelegt sein
+    etype = st.segmented_control("Beschäftigungsart", EMPLOYMENT_TYPES, key="gen_etype") or "Vollzeit"
     if etype == "Werkstudent" and not profile["preferences"]["student_status"]:
         st.caption("💡 Tipp: Trage im Profil unter *Rahmen & Stil* dein Studium ein – das ist bei "
                    "Werkstudentenstellen das wichtigste Argument.")

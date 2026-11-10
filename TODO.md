@@ -2,6 +2,8 @@
 
 ## Offen
 
+- [ ] **Bewerbung per E-Mail versenden** (SMTP aus dem eigenen Postfach, Vorschau → „Senden“, Eintrag in „Meine Bewerbungen“).
+- [ ] **Tägliche Jobsuche** mit Hinweis auf neue passende Stellen (gespeicherte Suche).
 - [ ] **Hosting-Anleitung** für den Betrieb mit mehreren Personen (z. B. Docker + kleiner VPS, Railway oder
       Render mit persistentem Volume für `data/`).
 - [ ] **Cookie-Login im Browser testen** (AppTest kann keine Cookies): anmelden, Seite neu laden → angemeldet bleiben.

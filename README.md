@@ -77,6 +77,7 @@ Logins). Kein Cloud-Dienst nötig, Backup = diese Datei kopieren. `data/` ist ni
 | Bereich | Was es kann |
 |---|---|
 | Profil | Lebenslauf (PDF/DOCX/TXT) hochladen → KI liest **einmalig** aus → alles editierbar. Oder manuell eingeben. Foto (auch direkt aus dem PDF), Unterschrift, Skills, Sprachen, Projekte, Stärken mit Beleg, Rahmen (Gehalt, Verfügbarkeit, Studium), eigener Schreibstil, Akzentfarbe. JSON-Export/-Import. |
+| Jobs finden | Stellensuche über die Jobbörse der Bundesagentur für Arbeit (kein Konto nötig): Was, Wo, Umkreis, Beschäftigungsart, Zeitraum. Zeigt Gehalt, Homeoffice, Profil-Treffer und „schon beworben“. Optional **KI-Passung** 0–100 % mit Begründung und fehlenden Anforderungen (ein Aufruf für bis zu 25 Stellen). **„Bewerbung erstellen“** übernimmt den kompletten Anzeigentext. |
 | Bewerbung | Link (liest JobPosting-JSON-LD der Jobbörsen) oder Text, Beschäftigungsart (Vollzeit, Teilzeit, Werkstudent, Praktikum, Ausbildung, Minijob, Freelance), Zusatz-Skills, Schwerpunkt. |
 | Ehrlichkeit | Die KI liefert nur Texte + Referenzen auf Profileinträge; Firmen, Zeiträume, Ausbildung, Gehalt und Eintrittstermin setzt Python aus dem Profil ein. Regel-Check (Übertreibung, Unterverkaufen, erfundene Zahlen, Du/Sie-Mix, Widersprüche) + optionaler KI-Faktencheck + Auto-Korrektur. Fehlende Anforderungen werden angezeigt, aber nie behauptet. |
 | Modelle | Gemini, OpenAI-kompatibel (Groq, Mistral, OpenRouter, Ollama …), Claude. Automatischer Wechsel bei Limit/Timeout/Überlastung, zuletzt Abo-Modus. |
@@ -116,7 +117,7 @@ Ein Tag `v*` (z. B. `git tag v1.0.0 && git push origin v1.0.0`) baut die `.exe` 
 sie an das Release.
 
 Struktur: `launcher.py` (Start der App/.exe), `smartresume/` (Logik: `auth`, `bridge`, `config`, `paths`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`,
-`cv_import`, `scrape`, `render`, `branding`) und `smartresume/ui/` (Seiten). `template.typ` liest alle Inhalte
+`cv_import`, `scrape`, `jobsearch`, `render`, `branding`) und `smartresume/ui/` (Seiten). `template.typ` liest alle Inhalte
 aus `data.json` – Texte werden nie als Typst-Markup interpretiert. Tests nutzen ein erfundenes Beispielprofil
 (`tests/fixtures/`).
 
