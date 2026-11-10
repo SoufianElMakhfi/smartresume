@@ -17,7 +17,9 @@ PROVIDERS = [
      "how": "Mit einem Google-Konto anmelden → „Create API key“ → Key kopieren."},
     {"env": "MISTRAL_API_KEY", "name": "Mistral", "free": True,
      "url": "https://console.mistral.ai/api-keys",
-     "how": "Konto anlegen → bei „Upgrade“ den kostenlosen Plan „Experiment“ wählen (keine Kreditkarte, nur Handynummer per SMS bestätigen) → „Neuer Schlüssel“ → Key kopieren."},
+     "plan_url": "https://admin.mistral.ai/plateforme/subscription",
+     "how": "1. Gratis-Plan: anmelden → „Compare plans“ / „Upgrade“ → „Experiment“ wählen (kostenlos, keine "
+            "Kreditkarte, Handynummer per SMS bestätigen). 2. Key holen: „Neuer Schlüssel“ → Key kopieren."},
     {"env": "GROQ_API_KEY", "name": "Groq", "free": True,
      "url": "https://console.groq.com/keys",
      "how": "Konto anlegen → „Create API Key“ → Key kopieren."},
