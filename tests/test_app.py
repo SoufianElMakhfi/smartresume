@@ -261,10 +261,22 @@ def test_full_generation_flow(env):
     assert render.count_pages(pdf) == 3
     assert "Lumora GmbH" in render.pdf_text(pdf)[1]
 
-    _btn(at, "✅ Als beworben speichern").click()
+    # automatisch gespeichert – inkl. Stellenanzeige, Status „Erstellt“
+    apps = db.list_applications(uid)
+    assert len(apps) == 1 and apps[0]["company"] == "Lumora GmbH" and apps[0]["status"] == "Erstellt"
+    assert "Vue.js" in db.get_application(uid, apps[0]["id"])["job_text"]
+    assert [d.label for d in at.get("download_button")] == ["⬇ Bewerbungsmappe (PDF)"]
+    # getrennt: Anschreiben + Lebenslauf (Wahl wird gemerkt)
+    at.segmented_control(key="gen_format").set_value("📄 Getrennt: Anschreiben + Lebenslauf")
+    _run(at)
+    assert [d.label for d in at.get("download_button")] == ["⬇ Anschreiben", "⬇ Lebenslauf"]
+    assert db.get_user_settings(uid)["pdf_format"].startswith("📄 Getrennt")
+    # „Als beworben markieren“ setzt NUR den Status – keine zweite Bewerbung
+    _btn(at, "✅ Als beworben markieren").click()
     _run(at)
     apps = db.list_applications(uid)
-    assert len(apps) == 1 and apps[0]["company"] == "Lumora GmbH" and apps[0]["employment_type"] == "Vollzeit"
+    assert len(apps) == 1 and apps[0]["status"] == "Beworben"
+    assert not any(b.label == "✅ Als beworben markieren" for b in at.button)
 
     # Tracking-Seite: Status ändern und Bewerbung zum Bearbeiten öffnen
     _btn(at, "📋 Meine Bewerbungen").click()
@@ -274,6 +286,10 @@ def test_full_generation_flow(env):
     _run(at)
     assert at.session_state.page == "generate" and at.session_state.gen_step == "review"
     assert at.session_state.gen_app_id == apps[0]["id"]
+    # erneut PDF erstellen → aktualisiert dieselbe Bewerbung statt eine neue anzulegen
+    _btn(at, "📄 PDF erstellen").click()
+    _run(at)
+    assert len(db.list_applications(uid)) == 1
 
 
 def test_daily_limit(env):

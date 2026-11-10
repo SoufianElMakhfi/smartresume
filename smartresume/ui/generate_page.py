@@ -1,6 +1,7 @@
 """Neue Bewerbung: Stelle eingeben → generieren → prüfen/optimieren → PDF."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import date
@@ -14,7 +15,8 @@ from .common import (branding, chat_bridge, check_limit, fallback_chain, fmt_tok
                      notify_switch, record_usage, show_findings, uid)
 
 GEN_KEYS = ("gen_step", "gen", "gen_pdf", "gen_app_id", "gen_factcheck", "gen_manual", "repair_manual",
-            "gen_sent", "gen_mail_to", "gen_mail_subject", "gen_mail_body", "gen_mail_copy")
+            "gen_sent", "gen_mail_to", "gen_mail_subject", "gen_mail_body", "gen_mail_copy", "gen_saved",
+            "gen_format")
 MANUAL_LABEL = "Gemini/ChatGPT (Abo-Modus)"
 SWITCH = "Kein Problem – weiter geht es kostenlos mit deinem Gemini- oder ChatGPT-Konto."
 
@@ -391,30 +393,55 @@ def _file_name(profile: dict, company: str, kind: str = "Bewerbung") -> str:
     return f"{kind}_{name}_{_slug(company) or 'Unternehmen'}.pdf"
 
 
+FORMATS = ["📁 Eine Bewerbungsmappe (1 PDF)", "📄 Getrennt: Anschreiben + Lebenslauf"]
+
+
+def _autosave(g: dict, s: dict, pdf: bytes) -> int:
+    """Jede erstellte Bewerbung landet sofort in „Meine Bewerbungen“ – mit Stellenanzeige und PDF, Status
+    „Erstellt“. So geht nichts verloren, auch wenn man vergisst, sie als beworben zu markieren."""
+    cl = s["cover_letter"]
+    digest = hashlib.sha1(pdf).hexdigest()
+    app_id = st.session_state.get("gen_app_id")
+    if st.session_state.get("gen_saved") == digest and app_id:
+        return app_id
+    if app_id:
+        db.update_application(uid(), app_id, pdf_bytes=pdf, company=cl.get("company"), job_title=cl.get("job_title"),
+                              structured_data=json.dumps(s, ensure_ascii=False))
+    else:
+        app_id = db.save_application(uid(), cl.get("company", ""), cl.get("job_title", ""), g["employment_type"],
+                                     g["job_text"], g["job_url"], pdf, s, status="Erstellt")
+        st.session_state.gen_app_id = app_id
+    st.session_state.gen_saved = digest
+    return app_id
+
+
+def _documents(prof: dict, cl: dict, pdf: bytes, separate: bool) -> list[tuple[bytes, str]]:
+    """[(pdf, dateiname)] im gewählten Format."""
+    if separate:
+        try:
+            letter_pdf, cv_pdf = render.split_pdf(pdf)
+            return [(letter_pdf, _file_name(prof["data"], cl.get("company"), "Anschreiben")),
+                    (cv_pdf, _file_name(prof["data"], cl.get("company"), "Lebenslauf"))]
+        except Exception:  # noqa: BLE001 – Aufteilen fehlgeschlagen → komplette Mappe
+            st.warning("Die Mappe ließ sich nicht aufteilen – es wird die komplette PDF verwendet.")
+    return [(pdf, _file_name(prof["data"], cl.get("company")))]
+
+
 def _done() -> None:
     g = st.session_state.gen
     s = g["structured"]
     cl = s["cover_letter"]
     prof = db.get_profile(uid())
     pdf = st.session_state.gen_pdf
+    app_id = _autosave(g, s, pdf)
+    app = next((a for a in db.list_applications(uid()) if a["id"] == app_id), {})
+
     st.title("Fertig! 🎉")
+    st.caption("💾 Automatisch gespeichert unter „📋 Meine Bewerbungen“ – mit Stellenanzeige und PDF.")
     pages = render.count_pages(pdf)
     if pages != 3:
         st.warning(f"Das PDF hat {pages} statt 3 Seiten – vermutlich ist das Anschreiben oder der Lebenslauf "
                    "zu lang. Unter 'Bearbeiten' kürzen.")
-    st.download_button("⬇ PDF herunterladen (Deckblatt, Anschreiben, Lebenslauf)", pdf,
-                       file_name=_file_name(prof["data"], cl.get("company")), mime="application/pdf",
-                       type="primary", use_container_width=True)
-    try:
-        letter_pdf, cv_pdf = render.split_pdf(pdf)
-        st.caption("Für Bewerbungsportale, die Anschreiben und Lebenslauf einzeln verlangen:")
-        d1, d2 = st.columns(2)
-        d1.download_button("⬇ Nur Anschreiben", letter_pdf, mime="application/pdf", use_container_width=True,
-                           file_name=_file_name(prof["data"], cl.get("company"), "Anschreiben"))
-        d2.download_button("⬇ Nur Lebenslauf", cv_pdf, mime="application/pdf", use_container_width=True,
-                           file_name=_file_name(prof["data"], cl.get("company"), "Lebenslauf"))
-    except Exception:  # noqa: BLE001 – Aufteilen ist ein Extra; die Gesamt-PDF bleibt immer verfügbar
-        pass
     c1, c2 = st.columns(2)
     if c1.button("✏️ Bearbeiten", use_container_width=True):
         st.session_state.gen_step = "review"
@@ -422,24 +449,49 @@ def _done() -> None:
     if c2.button("➕ Neue Bewerbung", use_container_width=True):
         reset()
         st.rerun()
+
+    # Format: wie verlangt das Unternehmen die Unterlagen? (gilt für Download UND E-Mail-Anhang)
     st.divider()
-    _send_section(g, s, prof, pdf)
+    settings = db.get_user_settings(uid())
+    st.session_state.setdefault("gen_format", settings.get("pdf_format") if settings.get("pdf_format") in FORMATS
+                                else FORMATS[0])
+    fmt = st.segmented_control("Wie möchte das Unternehmen die Unterlagen?", FORMATS, key="gen_format") or FORMATS[0]
+    if fmt != settings.get("pdf_format"):
+        settings["pdf_format"] = fmt
+        db.save_user_settings(uid(), settings)
+    separate = fmt == FORMATS[1]
+    st.caption("Getrennt = Anschreiben und Lebenslauf als zwei Dateien (das Deckblatt entfällt) – für Portale mit "
+               "einzelnen Upload-Feldern." if separate else
+               "Deckblatt, Anschreiben und Lebenslauf in einer Datei – Standard für Bewerbungen per E-Mail.")
+    docs = _documents(prof, cl, pdf, separate)
+
     st.divider()
-    app_id = st.session_state.get("gen_app_id")
-    if app_id:
-        if st.button("💾 Änderungen in 'Meine Bewerbungen' speichern", use_container_width=True):
-            db.update_application(uid(), app_id, pdf_bytes=pdf, company=cl.get("company"),
-                                  job_title=cl.get("job_title"),
-                                  structured_data=json.dumps(s, ensure_ascii=False))
-            st.success("Gespeichert.")
-    elif st.button("✅ Als beworben speichern", use_container_width=True):
-        st.session_state.gen_app_id = db.save_application(
-            uid(), cl.get("company", ""), cl.get("job_title", ""), g["employment_type"], g["job_text"],
-            g["job_url"], pdf, s)
-        st.success("Gespeichert – du findest sie unter 'Meine Bewerbungen'.")
+    _send_section(g, s, prof, docs)
+
+    # Herunterladen (rot) + Status – ganz unten
+    st.divider()
+    st.subheader("⬇ Herunterladen")
+    cols = st.columns(len(docs))
+    for col, (data, name) in zip(cols, docs):
+        if name.startswith("Anschreiben"):
+            label = "⬇ Anschreiben"
+        elif name.startswith("Lebenslauf"):
+            label = "⬇ Lebenslauf"
+        else:
+            label = "⬇ Bewerbungsmappe (PDF)"
+        col.download_button(label, data, file_name=name, mime="application/pdf", type="primary",
+                            use_container_width=True, key=f"dl_{name}")
+    if app.get("status") == "Erstellt":
+        if st.button("✅ Als beworben markieren", use_container_width=True,
+                     help="Setzt nur den Status in „Meine Bewerbungen“ – gespeichert ist schon alles."):
+            db.mark_applied(uid(), app_id)
+            st.rerun()
+    elif app:
+        st.success(f"Status: **{app['status']}** (seit {app['applied_at']}) – ändern unter „Meine Bewerbungen“.",
+                   icon="✅")
 
 
-def _send_section(g: dict, s: dict, prof: dict, pdf: bytes) -> None:
+def _send_section(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -> None:
     """Bewerbung versenden: Empfänger aus der Anzeige, dann direkt per SMTP oder als Gmail-Entwurf."""
     st.subheader("📨 Bewerbung versenden")
     cl = s["cover_letter"]
@@ -464,7 +516,6 @@ def _send_section(g: dict, s: dict, prof: dict, pdf: bytes) -> None:
     subject = st.text_input("Betreff", key="gen_mail_subject")
     body = st.text_area("Text der E-Mail", key="gen_mail_body", height=220,
                         help="Kurz halten – das eigentliche Anschreiben steckt im PDF.")
-    filename = _file_name(prof["data"], cl.get("company"))
     acc = db.get_user_settings(uid()).get("mail") or {}
     ok_to = mailer.valid_email(to)
 
@@ -474,22 +525,17 @@ def _send_section(g: dict, s: dict, prof: dict, pdf: bytes) -> None:
         if st.button(f"📨 Jetzt von {acc['address']} senden", type="primary", use_container_width=True,
                      disabled=not ok_to):
             try:
-                msg = mailer.build_message(acc, prof["data"]["personal"].get("name", ""), to, subject, body, pdf,
-                                           filename, copy_to_self=copy)
+                msg = mailer.build_message(acc, prof["data"]["personal"].get("name", ""), to, subject, body, docs,
+                                           copy_to_self=copy)
                 with st.spinner("Sende …"):
                     mailer.send(acc, msg)
             except mailer.MailError as e:
                 st.error(str(e))
                 return
             note = f"Per E-Mail an {to.strip()} gesendet am {date.today():%d.%m.%Y}."
-            app_id = st.session_state.get("gen_app_id")
-            if app_id:
-                db.update_application(uid(), app_id, status="Beworben", notes=note)
-            else:
-                st.session_state.gen_app_id = db.save_application(
-                    uid(), cl.get("company", ""), cl.get("job_title", ""), g["employment_type"], g["job_text"],
-                    g["job_url"], pdf, s)
-                db.update_application(uid(), st.session_state.gen_app_id, notes=note)
+            app_id = st.session_state.gen_app_id                # durch _autosave immer vorhanden
+            db.mark_applied(uid(), app_id)
+            db.update_application(uid(), app_id, notes=note)
             st.session_state.gen_sent = to.strip()
             st.rerun()
     else:
@@ -498,7 +544,8 @@ def _send_section(g: dict, s: dict, prof: dict, pdf: bytes) -> None:
                        use_container_width=True, disabled=not ok_to)
         c2.link_button("✉️ Im Mailprogramm öffnen ↗", mailer.mailto_url(to, subject, body),
                        use_container_width=True, disabled=not ok_to)
-        st.caption("Das PDF oben herunterladen und im Entwurf anhängen (Büroklammer oder per Drag & Drop).")
+        st.caption("Die Datei" + ("en" if len(docs) > 1 else "") + " unten herunterladen und im Entwurf "
+                   "anhängen (Büroklammer oder per Drag & Drop).")
         if st.button("Direkt aus SmartResume senden – E-Mail-Konto einrichten (2 Minuten)"):
             go("settings")
             st.rerun()

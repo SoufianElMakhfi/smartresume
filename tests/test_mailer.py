@@ -34,13 +34,15 @@ def test_compose_urls():
 
 
 def test_build_message():
-    msg = mailer.build_message(ACC, "Max Mustermann", "hr@firma.de", "Bewerbung", "Text", b"%PDF-1.7", "a.pdf",
+    msg = mailer.build_message(ACC, "Max Mustermann", "hr@firma.de", "Bewerbung", "Text",
+                               [(b"%PDF-1.7 A", "Anschreiben.pdf"), (b"%PDF-1.7 L", "Lebenslauf.pdf")],
                                copy_to_self=True)
     assert msg["From"] == "Max Mustermann <max@example.com>" and msg["Bcc"] == "max@example.com"
     att = list(msg.iter_attachments())
-    assert att[0].get_filename() == "a.pdf" and att[0].get_content() == b"%PDF-1.7"
+    assert [a.get_filename() for a in att] == ["Anschreiben.pdf", "Lebenslauf.pdf"]
+    assert att[1].get_content() == b"%PDF-1.7 L"
     with pytest.raises(mailer.MailError, match="Empfängeradresse"):
-        mailer.build_message(ACC, "", "kein-mail", "B", "T", b"", "a.pdf")
+        mailer.build_message(ACC, "", "kein-mail", "B", "T", [(b"", "a.pdf")])
 
 
 class FakeSMTP:
@@ -76,7 +78,7 @@ def test_send_and_errors(monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent.clear()
     FakeSMTP.fail_login = False
-    mailer.send(ACC, mailer.build_message(ACC, "", "hr@firma.de", "B", "T", b"%PDF", "a.pdf"))
+    mailer.send(ACC, mailer.build_message(ACC, "", "hr@firma.de", "B", "T", [(b"%PDF", "a.pdf")]))
     assert FakeSMTP.sent[0][0] == "abcdefghijklmnop"   # Leerzeichen aus Gmail-App-Passwort entfernt
     mailer.test_account(ACC)
     FakeSMTP.fail_login = True

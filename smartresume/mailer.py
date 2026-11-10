@@ -108,8 +108,9 @@ def account_ready(acc: dict | None) -> bool:
     return bool(acc and acc.get("host") and acc.get("address") and acc.get("password"))
 
 
-def build_message(acc: dict, sender_name: str, to: str, subject: str, body: str, pdf: bytes, filename: str,
-                  copy_to_self: bool = False) -> EmailMessage:
+def build_message(acc: dict, sender_name: str, to: str, subject: str, body: str,
+                  attachments: list[tuple[bytes, str]], copy_to_self: bool = False) -> EmailMessage:
+    """attachments: [(pdf_bytes, dateiname)] – eine Bewerbungsmappe oder Anschreiben + Lebenslauf getrennt."""
     if not valid_email(to):
         raise MailError("Bitte eine gültige Empfängeradresse angeben.")
     msg = EmailMessage()
@@ -119,7 +120,8 @@ def build_message(acc: dict, sender_name: str, to: str, subject: str, body: str,
     if copy_to_self:
         msg["Bcc"] = acc["address"]
     msg.set_content(body)
-    msg.add_attachment(pdf, maintype="application", subtype="pdf", filename=filename)
+    for data, filename in attachments:
+        msg.add_attachment(data, maintype="application", subtype="pdf", filename=filename)
     return msg
 
 

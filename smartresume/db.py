@@ -21,7 +21,7 @@ from . import paths
 from .profile import empty_profile, normalize_profile
 
 
-STATUS_OPTIONS = ["Beworben", "Interview", "Angebot", "Absage", "Zurückgezogen"]
+STATUS_OPTIONS = ["Erstellt", "Beworben", "Interview", "Angebot", "Absage", "Zurückgezogen"]
 
 
 def db_path() -> Path:
@@ -259,14 +259,20 @@ def save_profile(user_id: int, data=_UNSET, photo=_UNSET, signature=_UNSET,
 # ---------------------------------------------------------------------------
 def save_application(user_id: int, company: str, job_title: str, employment_type: str,
                      job_text: str, job_url: str, pdf_bytes: bytes, structured: dict,
-                     path=None) -> int:
+                     path=None, status: str = "Beworben") -> int:
+    """status „Erstellt“: Unterlagen fertig, aber noch nicht verschickt (wird automatisch gespeichert)."""
     with connect(path) as con:
         cur = con.execute(
             "INSERT INTO applications (user_id, company, job_title, employment_type, applied_at, "
-            "job_text, job_url, pdf_bytes, structured_data) VALUES (?,?,?,?,?,?,?,?,?)",
+            "job_text, job_url, pdf_bytes, structured_data, status) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (user_id, company, job_title, employment_type, _now(), job_text, job_url, pdf_bytes,
-             json.dumps(structured, ensure_ascii=False)))
+             json.dumps(structured, ensure_ascii=False), status))
         return cur.lastrowid
+
+
+def mark_applied(user_id: int, app_id: int, path=None) -> None:
+    """Status „Beworben“ + Datum = jetzt (Unterlagen bleiben unverändert)."""
+    update_application(user_id, app_id, path=path, status="Beworben", applied_at=_now())
 
 
 def list_applications(user_id: int, path=None) -> list[dict]:
@@ -292,7 +298,7 @@ def get_application(user_id: int, app_id: int, path=None) -> dict | None:
 
 
 def update_application(user_id: int, app_id: int, path=None, **fields) -> None:
-    allowed = {"status", "notes", "pdf_bytes", "structured_data", "company", "job_title"}
+    allowed = {"status", "notes", "pdf_bytes", "structured_data", "company", "job_title", "applied_at"}
     fields = {k: v for k, v in fields.items() if k in allowed}
     if not fields:
         return
