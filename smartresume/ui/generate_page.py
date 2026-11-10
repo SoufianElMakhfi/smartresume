@@ -3,16 +3,18 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 
 import streamlit as st
 
-from .. import bridge, db, generate, llm, quality, render
-from ..profile import EMPLOYMENT_TYPES, is_profile_usable
+from .. import bridge, db, generate, llm, mailer, quality, render
+from ..profile import EMPLOYMENT_TYPES, default_employment_type, is_profile_usable
 from ..scrape import ScrapeError, scrape_url
 from .common import (branding, chat_bridge, check_limit, fallback_chain, fmt_tokens, go, model_picker,
                      notify_switch, record_usage, show_findings, uid)
 
-GEN_KEYS = ("gen_step", "gen", "gen_pdf", "gen_app_id", "gen_factcheck", "gen_manual", "repair_manual")
+GEN_KEYS = ("gen_step", "gen", "gen_pdf", "gen_app_id", "gen_factcheck", "gen_manual", "repair_manual",
+            "gen_sent", "gen_mail_to", "gen_mail_subject", "gen_mail_body", "gen_mail_copy")
 MANUAL_LABEL = "Gemini/ChatGPT (Abo-Modus)"
 SWITCH = "Kein Problem – weiter geht es kostenlos mit deinem Gemini- oder ChatGPT-Konto."
 
@@ -62,7 +64,10 @@ def _input() -> None:
                 icon="💬")
         if st.session_state.user.get("is_admin") and st.button("🔑 Kostenlosen KI-Key einrichten (2 Minuten)"):
             go("setup")
-    st.session_state.setdefault("gen_etype", "Vollzeit")   # kann von „Jobs finden“ vorbelegt sein
+    prefs = db.get_user_settings(uid()).get("gen_prefs") or {}
+    # Zuletzt gewählte Beschäftigungsart merken; ohne Vorgabe: Werkstudent, wenn ein Studium im Profil steht.
+    # (Kann auch von „Jobs finden“ vorbelegt sein.)
+    st.session_state.setdefault("gen_etype", default_employment_type(profile, prefs))
     etype = st.segmented_control("Beschäftigungsart", EMPLOYMENT_TYPES, key="gen_etype") or "Vollzeit"
     if etype == "Werkstudent" and not profile["preferences"]["student_status"]:
         st.caption("💡 Tipp: Trage im Profil unter *Rahmen & Stil* dein Studium ein – das ist bei "
@@ -85,13 +90,18 @@ def _input() -> None:
                                key="gen_photo")
         show_links = c2.toggle("Links (Portfolio, LinkedIn …)", value=bool(profile["personal"]["links"]),
                                disabled=not profile["personal"]["links"], key="gen_links")
+        st.session_state.setdefault("gen_bullets", prefs.get("bullets", 2))
         bullets = c1.radio("Stichpunkte pro Station", [2, 3], horizontal=True, key="gen_bullets")
-        auto_fix = c2.toggle("Regelverstöße automatisch korrigieren", value=True, key="gen_autofix",
+        st.session_state.setdefault("gen_autofix", prefs.get("auto_fix", True))
+        auto_fix = c2.toggle("Regelverstöße automatisch korrigieren", key="gen_autofix",
                              help="Bei harten Fehlern (erfundene Zahlen, Platzhalter …) überarbeitet die KI "
                                   "das Anschreiben einmal gezielt. Kostet nur dann zusätzliche Tokens.")
 
     if not st.button("✨ Bewerbung erstellen", type="primary", use_container_width=True):
         return
+    settings = db.get_user_settings(uid())
+    settings["gen_prefs"] = {"employment_type": etype, "bullets": bullets, "auto_fix": auto_fix}
+    db.save_user_settings(uid(), settings)
 
     final_text = ""
     if job_url.strip() and not job_text.strip():   # eingefügter Text hat Vorrang – kein Abruf nötig
@@ -389,6 +399,8 @@ def _done() -> None:
         reset()
         st.rerun()
     st.divider()
+    _send_section(g, s, prof, pdf)
+    st.divider()
     app_id = st.session_state.get("gen_app_id")
     if app_id:
         if st.button("💾 Änderungen in 'Meine Bewerbungen' speichern", use_container_width=True):
@@ -401,3 +413,68 @@ def _done() -> None:
             uid(), cl.get("company", ""), cl.get("job_title", ""), g["employment_type"], g["job_text"],
             g["job_url"], pdf, s)
         st.success("Gespeichert – du findest sie unter 'Meine Bewerbungen'.")
+
+
+def _send_section(g: dict, s: dict, prof: dict, pdf: bytes) -> None:
+    """Bewerbung versenden: Empfänger aus der Anzeige, dann direkt per SMTP oder als Gmail-Entwurf."""
+    st.subheader("📨 Bewerbung versenden")
+    cl = s["cover_letter"]
+    sent_to = st.session_state.get("gen_sent")
+    if sent_to:
+        st.success(f"Gesendet an **{sent_to}** – steht in „Meine Bewerbungen“.", icon="✅")
+        return
+    found = mailer.find_emails(g.get("job_text", ""))
+    if found:
+        st.caption("E-Mail-Adresse aus der Anzeige übernommen" +
+                   (f" (weitere: {', '.join(found[1:3])})" if len(found) > 1 else "") + " – bitte kurz prüfen.")
+    else:
+        st.info("In der Anzeige steht **keine E-Mail-Adresse**. Dann bewirbt man sich meist über das "
+                "Bewerbungsformular der Firma: Anzeige öffnen → „Jetzt bewerben“ → PDF hochladen. "
+                "Steht irgendwo doch eine Adresse (z. B. auf der Karriereseite), trag sie hier ein.", icon="ℹ️")
+        if g.get("job_url"):
+            st.link_button("Anzeige / Bewerbungsportal öffnen ↗", g["job_url"], use_container_width=True)
+    st.session_state.setdefault("gen_mail_to", found[0] if found else "")
+    st.session_state.setdefault("gen_mail_subject", mailer.default_subject(s))
+    st.session_state.setdefault("gen_mail_body", mailer.default_body(s, prof["data"]))
+    to = st.text_input("An", key="gen_mail_to", placeholder="bewerbung@firma.de")
+    subject = st.text_input("Betreff", key="gen_mail_subject")
+    body = st.text_area("Text der E-Mail", key="gen_mail_body", height=220,
+                        help="Kurz halten – das eigentliche Anschreiben steckt im PDF.")
+    filename = _file_name(prof["data"], cl.get("company"))
+    acc = db.get_user_settings(uid()).get("mail") or {}
+    ok_to = mailer.valid_email(to)
+
+    if mailer.account_ready(acc):
+        copy = st.checkbox("Kopie an mich", value=not mailer.PROVIDERS.get(acc.get("provider"), {}).get("saves_sent"),
+                           key="gen_mail_copy", help="Gmail legt gesendete Mails ohnehin unter „Gesendet“ ab.")
+        if st.button(f"📨 Jetzt von {acc['address']} senden", type="primary", use_container_width=True,
+                     disabled=not ok_to):
+            try:
+                msg = mailer.build_message(acc, prof["data"]["personal"].get("name", ""), to, subject, body, pdf,
+                                           filename, copy_to_self=copy)
+                with st.spinner("Sende …"):
+                    mailer.send(acc, msg)
+            except mailer.MailError as e:
+                st.error(str(e))
+                return
+            note = f"Per E-Mail an {to.strip()} gesendet am {date.today():%d.%m.%Y}."
+            app_id = st.session_state.get("gen_app_id")
+            if app_id:
+                db.update_application(uid(), app_id, status="Beworben", notes=note)
+            else:
+                st.session_state.gen_app_id = db.save_application(
+                    uid(), cl.get("company", ""), cl.get("job_title", ""), g["employment_type"], g["job_text"],
+                    g["job_url"], pdf, s)
+                db.update_application(uid(), st.session_state.gen_app_id, notes=note)
+            st.session_state.gen_sent = to.strip()
+            st.rerun()
+    else:
+        c1, c2 = st.columns(2)
+        c1.link_button("📧 Als Gmail-Entwurf öffnen ↗", mailer.gmail_compose_url(to, subject, body),
+                       use_container_width=True, disabled=not ok_to)
+        c2.link_button("✉️ Im Mailprogramm öffnen ↗", mailer.mailto_url(to, subject, body),
+                       use_container_width=True, disabled=not ok_to)
+        st.caption("Das PDF oben herunterladen und im Entwurf anhängen (Büroklammer oder per Drag & Drop).")
+        if st.button("Direkt aus SmartResume senden – E-Mail-Konto einrichten (2 Minuten)"):
+            go("settings")
+            st.rerun()

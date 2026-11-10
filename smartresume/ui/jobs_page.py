@@ -4,7 +4,7 @@ from __future__ import annotations
 import streamlit as st
 
 from .. import bridge, db, jobsearch, llm
-from ..profile import EMPLOYMENT_TYPES, profile_city
+from ..profile import EMPLOYMENT_TYPES, default_employment_type, profile_city
 from .common import available_models, chat_bridge, fallback_chain, go, notify_switch, record_usage, uid
 
 STATE = ("jobs", "jobs_total", "jobs_texts", "jobs_query", "jobs_page", "jobs_ratings", "jobs_manual")
@@ -148,7 +148,7 @@ def render() -> None:
                              placeholder="z. B. Frontend Entwickler, Informationssicherheit, Buchhaltung")
         where = c2.text_input("Wo?", value=saved.get("where", profile_city(profile)), placeholder="Stadt oder PLZ")
         c3, c4, c5 = st.columns(3)
-        etype = saved.get("employment_type", "Vollzeit")
+        etype = saved.get("employment_type") or default_employment_type(profile, settings.get("gen_prefs"))
         etype = c3.selectbox("Beschäftigungsart", EMPLOYMENT_TYPES,
                              index=EMPLOYMENT_TYPES.index(etype) if etype in EMPLOYMENT_TYPES else 0)
         radius = saved.get("radius", 25)

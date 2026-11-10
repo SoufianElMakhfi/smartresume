@@ -176,6 +176,14 @@ def profile_city(profile: dict) -> str:
     return re.sub(r"^\s*\d{4,5}\s*", "", zc).strip()
 
 
+def default_employment_type(profile: dict, prefs: dict | None = None) -> str:
+    """Zuletzt gewählte Beschäftigungsart; sonst Werkstudent, wenn ein Studium im Profil steht."""
+    last = (prefs or {}).get("employment_type")
+    if last in EMPLOYMENT_TYPES:
+        return last
+    return "Werkstudent" if (profile.get("preferences") or {}).get("student_status") else "Vollzeit"
+
+
 def is_profile_usable(profile: dict) -> list[str]:
     """Gibt fehlende Pflichtangaben zurück (leere Liste = ok)."""
     missing = []

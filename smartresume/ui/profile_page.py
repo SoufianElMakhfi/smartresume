@@ -225,18 +225,12 @@ def render() -> None:
 
     st.session_state.draft = new
     st.divider()
-    dirty = normalize_profile(new) != stored["data"]
-    c1, c2 = st.columns([1, 1])
-    if c1.button("💾 Profil speichern", type="primary", use_container_width=True, disabled=not dirty):
+    # Automatisch speichern: jede Änderung landet sofort in der Datenbank (kein Datenverlust bei
+    # Neustart, Abmelden oder Seitenwechsel). Der Entwurf bleibt erhalten, damit Eingabefelder stabil sind.
+    if normalize_profile(new) != stored["data"]:
         db.save_profile(uid(), data=new)
-        _load_draft(force=True)
-        st.toast("Profil gespeichert.", icon="✅")
-        st.rerun()
-    if c2.button("↩ Änderungen verwerfen", use_container_width=True, disabled=not dirty):
-        _load_draft(force=True)
-        st.rerun()
-    if dirty:
-        st.caption("⚠️ Ungespeicherte Änderungen.")
+        st.toast("Gespeichert", icon="✅")
+    st.caption("✅ Alle Änderungen werden automatisch gespeichert.")
 
 
 def _apply_cv(incoming: dict, mode: str, source: str) -> None:

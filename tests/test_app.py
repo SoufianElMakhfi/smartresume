@@ -189,9 +189,12 @@ def test_profile_page_edit_and_save(env):
     assert name_input.value == "Max Mustermann"
     name_input.input("Max M.")
     _run(at)
-    _btn(at, "💾 Profil speichern").click()
-    _run(at)
-    assert db.get_profile(uid)["data"]["personal"]["name"] == "Max M."
+    assert db.get_profile(uid)["data"]["personal"]["name"] == "Max M."   # sofort gespeichert, ohne Knopf
+    # bleibt nach neuem Login (neue Sitzung) erhalten
+    at2 = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _btn(at2, "👤 Mein Profil").click()
+    _run(at2)
+    assert next(t for t in at2.text_input if t.label == "Vollständiger Name *").value == "Max M."
     # Station hinzufügen und wieder entfernen
     n = len(db.get_profile(uid)["data"]["experience"])
     _btn(at, "＋ Station hinzufügen").click()
@@ -417,3 +420,74 @@ def test_job_search_rating_and_apply(env, monkeypatch):
     assert at.session_state.page == "generate"
     assert next(t for t in at.text_area if t.label.startswith("… oder Anzeigentext")).value == texts["R2"]
     assert at.session_state.gen_url == jobs[1]["url"]
+
+
+def _three_page_pdf() -> bytes:
+    import io
+    from pypdf import PdfWriter
+    w = PdfWriter()
+    for _ in range(3):
+        w.add_blank_page(595, 842)
+    buf = io.BytesIO()
+    w.write(buf)
+    return buf.getvalue()
+
+
+def _done_state(at):
+    s = {"cover_letter": {"subject": "Bewerbung als Frontend Developer", "salutation": "Sehr geehrte Frau Brandt,",
+                          "company": "Lumora GmbH", "job_title": "Frontend Developer"}}
+    at.session_state["gen"] = {"structured": s, "job_text": "Bewerbung an jobs@lumora.de, Fragen: info@lumora.de",
+                               "job_url": "https://example.com/job", "employment_type": "Vollzeit"}
+    at.session_state["gen_pdf"] = _three_page_pdf()
+    at.session_state["gen_step"] = "done"
+
+
+def test_send_application_without_mail_account_offers_gmail_draft(env):
+    _user_with_profile()
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _done_state(at)
+    _run(at)
+    assert next(t for t in at.text_input if t.label == "An").value == "jobs@lumora.de"
+    assert "anbei sende ich Ihnen" in next(t for t in at.text_area if t.label == "Text der E-Mail").value
+    assert any("E-Mail-Konto einrichten" in b.label for b in at.button)
+
+
+def test_send_application_via_smtp(env, monkeypatch):
+    import smtplib
+    from tests.test_mailer import FakeSMTP
+    monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
+    FakeSMTP.sent.clear()
+    FakeSMTP.fail_login = False
+    uid = _user_with_profile()
+    db.save_user_settings(uid, {"mail": {"provider": "Gmail", "host": "smtp.gmail.com", "port": 587,
+                                         "address": "anna@example.com", "password": "pw"}})
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _done_state(at)
+    _run(at)
+    _btn(at, "📨 Jetzt von anna@example.com senden").click()
+    _run(at)
+    msg = FakeSMTP.sent[0][1]
+    assert msg["To"] == "jobs@lumora.de" and msg["Subject"] == "Bewerbung als Frontend Developer"
+    assert next(msg.iter_attachments()).get_filename().endswith(".pdf")
+    apps = db.list_applications(uid)
+    assert apps[0]["company"] == "Lumora GmbH" and "jobs@lumora.de" in apps[0]["notes"]
+    assert any("Gesendet an" in s.value for s in at.success)
+
+
+def test_settings_mail_account(env, monkeypatch):
+    from smartresume import mailer
+    tested = []
+    monkeypatch.setattr(mailer, "test_account", lambda acc: tested.append(acc))
+    uid = _user_with_profile()
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _btn(at, "⚙️ Einstellungen").click()
+    _run(at)
+    assert next(t for t in at.text_input if t.label == "Deine E-Mail-Adresse").value == "anna@example.com"
+    next(t for t in at.text_input if t.label == "App-Passwort").input("abcd efgh ijkl mnop")
+    _run(at)
+    _btn(at, "Verbindung testen").click()
+    _run(at)
+    assert tested and tested[0]["host"] == "smtp.gmail.com"
+    _btn(at, "💾 Speichern").click()
+    _run(at)
+    assert db.get_user_settings(uid)["mail"]["password"] == "abcd efgh ijkl mnop"

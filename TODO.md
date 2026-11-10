@@ -2,7 +2,7 @@
 
 ## Offen
 
-- [ ] **Bewerbung per E-Mail versenden** (SMTP aus dem eigenen Postfach, Vorschau → „Senden“, Eintrag in „Meine Bewerbungen“).
+- [ ] **E-Mail-Versand live testen** (Gmail-App-Passwort, GMX, WEB.DE).
 - [ ] **Tägliche Jobsuche** mit Hinweis auf neue passende Stellen (gespeicherte Suche).
 - [ ] **Hosting-Anleitung** für den Betrieb mit mehreren Personen (z. B. Docker + kleiner VPS, Railway oder
       Render mit persistentem Volume für `data/`).
