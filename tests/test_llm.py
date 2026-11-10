@@ -101,3 +101,47 @@ def test_with_fallback_switches_on_transient_only():
         raise llm.LLMError("überlastet", transient=True)
     with pytest.raises(llm.LLMError, match="überlastet"):
         llm.with_fallback([a, b], always)
+
+
+def test_pick_gemini_model_prefers_alias_then_stable_newest():
+    from smartresume.llm import pick_gemini_model
+    names = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.1-flash-lite-preview",
+             "gemini-3.0-flash-lite", "gemini-2.5-flash-preview-tts", "gemini-2.5-pro", "text-embedding-004"]
+    assert pick_gemini_model("gemini-flash-lite-latest", names) == "gemini-3.0-flash-lite"
+    assert pick_gemini_model("gemini-flash-latest", names) == "gemini-2.5-flash"
+    assert pick_gemini_model("gemini-flash-lite-latest", names + ["gemini-flash-lite-latest"]) == "gemini-flash-lite-latest"
+    assert pick_gemini_model("gemini-flash-lite-latest", ["gemini-2.5-pro"]) is None
+
+
+def test_gemini_uses_v1beta_and_resolves_missing_model(monkeypatch):
+    import types as pytypes
+    from google import genai
+    from smartresume import llm
+
+    seen = {}
+
+    class FakeModels:
+        def generate_content(self, model, contents, config):
+            seen.setdefault("models", []).append(model)
+            if model == "gemini-flash-lite-latest":
+                raise RuntimeError("404 NOT_FOUND models/gemini-flash-lite-latest is not found")
+            usage = pytypes.SimpleNamespace(prompt_token_count=3, candidates_token_count=1, thoughts_token_count=0)
+            return pytypes.SimpleNamespace(text="OK", usage_metadata=usage, candidates=[])
+
+        def list(self):
+            return [pytypes.SimpleNamespace(name="models/gemini-2.5-flash-lite", supported_actions=["generateContent"]),
+                    pytypes.SimpleNamespace(name="models/gemini-2.5-flash", supported_actions=["generateContent"])]
+
+    class FakeClient:
+        def __init__(self, api_key, http_options):
+            seen["api_version"] = http_options.api_version
+            self.models = FakeModels()
+
+    monkeypatch.setattr(genai, "Client", FakeClient)
+    monkeypatch.setattr(llm, "_GEMINI_RESOLVED", {})
+    cfg = {"label": "Gemini Flash-Lite", "provider": "gemini", "model": "gemini-flash-lite-latest"}
+    res = llm.complete(cfg, "k", "sys", "hi")
+    assert res.text == "OK" and res.model == "gemini-2.5-flash-lite"
+    assert seen["api_version"] == "v1beta"
+    llm.complete(cfg, "k", "sys", "hi")   # zweiter Aufruf nutzt gemerktes Modell direkt
+    assert seen["models"] == ["gemini-flash-lite-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash-lite"]

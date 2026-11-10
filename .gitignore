@@ -40,4 +40,5 @@ data/
 # ── Build der SmartResume.exe ────────────────────────────────────────────────
 build/
 dist/
+dist_neu/
 *.spec

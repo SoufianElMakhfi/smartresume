@@ -20,8 +20,8 @@ from pathlib import Path
 from . import paths
 
 
-# Stand 11/2026 live geprüft. Gemini-Aliase (*-latest) verhindern, dass die App
-# bricht, wenn Google alte Versionen abschaltet. Reihenfolge = Fallback-Reihenfolge:
+# Gemini-Aliase (*-latest, nur unter API „v1beta“) verhindern, dass die App bricht, wenn Google alte
+# Versionen abschaltet; fehlt ein Modell trotzdem, sucht _call_gemini ein passendes verfügbares. Reihenfolge = Fallback-Reihenfolge:
 # Flash-Lite war im Test 3–6 s schnell bei guter Qualität, Flash lag bei 55–200 s bzw. Timeout.
 DEFAULT_MODELS = [
     {"label": "Gemini Flash-Lite", "provider": "gemini", "model": "gemini-flash-lite-latest",
@@ -130,19 +130,77 @@ def parse_json_loose(text: str) -> dict:
 # ---------------------------------------------------------------------------
 # Provider-Aufrufe
 # ---------------------------------------------------------------------------
+# Gefundene Ersatzmodelle, falls Google ein konfiguriertes Modell abschaltet: {(gewünscht): echt}
+_GEMINI_RESOLVED: dict[str, str] = {}
+
+
+def _gemini_family(model: str) -> str:
+    m = model.lower()
+    return "flash-lite" if "flash-lite" in m else "flash" if "flash" in m else "pro" if "pro" in m else ""
+
+
+def _gemini_version(name: str) -> tuple:
+    m = re.search(r"gemini-(\d+(?:\.\d+)?)", name)
+    return (float(m.group(1)) if m else 0.0,)
+
+
+def pick_gemini_model(wanted: str, available: list[str]) -> str | None:
+    """Wählt aus den verfügbaren Modellen (Namen ohne „models/“) das passendste zur gewünschten
+    Familie (flash-lite / flash / pro): stabile vor Vorschau-Versionen, neueste Version zuerst."""
+    fam = _gemini_family(wanted)
+    if not fam:
+        return None
+
+    def fits(n: str) -> bool:
+        n = n.lower()
+        if not n.startswith("gemini-") or any(x in n for x in ("tts", "image", "audio", "live", "embedding", "robotics")):
+            return False
+        return _gemini_family(n) == fam
+
+    cands = [n for n in available if fits(n)]
+    if not cands:
+        return None
+    # -latest-Aliase sind ideal; sonst stabil > preview/exp, dann neueste Version
+    cands.sort(key=lambda n: (n.endswith("-latest"), not any(x in n for x in ("preview", "exp")),
+                              _gemini_version(n)), reverse=True)
+    return cands[0]
+
+
+def _gemini_generate(client, types, model, user, kwargs):
+    return client.models.generate_content(model=model, contents=user, config=types.GenerateContentConfig(**kwargs))
+
+
 def _call_gemini(cfg, key, system, user, json_mode, max_tokens, temperature) -> LLMResult:
     from google import genai
     from google.genai import types
 
     timeout_ms = int(cfg.get("timeout", 120)) * 1000
-    client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=timeout_ms))
+    # google-genai >= 3 spricht standardmäßig „v1“ an – dort fehlen die *-latest-Aliase.
+    client = genai.Client(api_key=key, http_options=types.HttpOptions(
+        timeout=timeout_ms, api_version=cfg.get("api_version", "v1beta")))
     kwargs = dict(system_instruction=system, temperature=temperature, max_output_tokens=max_tokens)
     if json_mode:
         kwargs["response_mime_type"] = "application/json"
     if "thinking_budget" in cfg:
         kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=int(cfg["thinking_budget"]))
-    resp = client.models.generate_content(
-        model=cfg["model"], contents=user, config=types.GenerateContentConfig(**kwargs))
+    model = _GEMINI_RESOLVED.get(cfg["model"], cfg["model"])
+    try:
+        resp = _gemini_generate(client, types, model, user, kwargs)
+    except Exception as e:  # noqa: BLE001
+        if "not_found" not in str(e).lower() and "404" not in str(e):
+            raise
+        # Modell gibt es (nicht mehr): passendes verfügbares Modell suchen und merken
+        try:
+            names = [m.name.split("/")[-1] for m in client.models.list()
+                     if "generateContent" in (getattr(m, "supported_actions", None) or ["generateContent"])]
+        except Exception:  # noqa: BLE001
+            raise e from None
+        alt = pick_gemini_model(cfg["model"], names)
+        if not alt or alt == model:
+            raise LLMError(f"Das Modell „{cfg['model']}“ gibt es bei Google nicht (mehr). "
+                           "In models.json ein aktuelles Gemini-Modell eintragen.") from e
+        resp = _gemini_generate(client, types, alt, user, kwargs)
+        _GEMINI_RESOLVED[cfg["model"]] = model = alt
     text = resp.text
     if not text:
         reason = "unbekannt"
@@ -153,7 +211,7 @@ def _call_gemini(cfg, key, system, user, json_mode, max_tokens, temperature) -> 
     return LLMResult(text,
                      getattr(um, "prompt_token_count", 0) or 0,
                      (getattr(um, "candidates_token_count", 0) or 0) + (getattr(um, "thoughts_token_count", 0) or 0),
-                     cfg["model"])
+                     model)
 
 
 def _call_openai_compat(cfg, key, system, user, json_mode, max_tokens, temperature) -> LLMResult:
