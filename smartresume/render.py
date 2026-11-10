@@ -122,8 +122,11 @@ def build_render_data(structured: dict, profile: dict, *, accent: str, font: str
         "accent": accent,
         "font": font,
         "labels": LABELS,
+        "doc_title": f"{subject} – {pers['name']}".strip(" –"),
+        "doc_keywords": _doc_keywords(structured),
         "person": {
             "name": pers["name"],
+            "links_line": "  ·  ".join(_short_url(l["url"]) for l in pers["links"]),
             "contact_line": "  ·  ".join(contact),
             "sender_line": " · ".join(x for x in (pers["name"], *contact) if x),
         },
@@ -152,6 +155,24 @@ def build_render_data(structured: dict, profile: dict, *, accent: str, font: str
             "paragraphs": paragraphs,
         },
     }
+
+
+def _short_url(url: str) -> str:
+    """https://www.linkedin.com/in/max/ → linkedin.com/in/max (lesbar, von ATS als Link erkennbar)."""
+    return re.sub(r"^https?://(www\.)?", "", url or "").rstrip("/")
+
+
+def _doc_keywords(structured: dict) -> list[str]:
+    """PDF-Schlüsselwörter: Begriffe der Anzeige, die belegt sind, plus die Kenntnisse aus dem Lebenslauf."""
+    words = [k["term"] for k in structured.get("keywords") or [] if k.get("profile")]
+    for s in structured.get("skills", []):
+        items = s.get("items", "")
+        words += items if isinstance(items, list) else [x.strip() for x in str(items).split(",")]
+    out = []
+    for w in words:
+        if w and w.lower() not in {o.lower() for o in out}:
+            out.append(w)
+    return out[:30]
 
 
 def render_pdf(structured: dict, profile: dict, *, photo: bytes | None = None, signature: bytes | None = None,
@@ -198,3 +219,29 @@ def count_pages(pdf: bytes) -> int:
 def pdf_text(pdf: bytes) -> list[str]:
     from pypdf import PdfReader
     return [p.extract_text() or "" for p in PdfReader(io.BytesIO(pdf)).pages]
+
+
+def split_pdf(pdf: bytes) -> tuple[bytes, bytes]:
+    """(Anschreiben, Lebenslauf) als getrennte PDFs – viele Bewerbungsportale wollen beides einzeln.
+    Das Deckblatt (Seite 1) gehört zu keinem der beiden. Der Lebenslauf beginnt auf der Seite, deren Kopf
+    „Lebenslauf“ trägt (auch wenn das Anschreiben länger als eine Seite ist)."""
+    from pypdf import PdfReader, PdfWriter
+    reader = PdfReader(io.BytesIO(pdf))
+    n = len(reader.pages)
+    cv_start = 2 if n > 2 else n
+    for i in range(1, n):
+        head = [ln.strip() for ln in (reader.pages[i].extract_text() or "").splitlines()[:4]]
+        if LABELS["cv"] in head:
+            cv_start = i
+            break
+
+    def part(pages) -> bytes:
+        w = PdfWriter()
+        for i in pages:
+            w.add_page(reader.pages[i])
+        if reader.metadata:
+            w.add_metadata({k: v for k, v in reader.metadata.items() if k in ("/Author", "/Keywords")})
+        buf = io.BytesIO()
+        w.write(buf)
+        return buf.getvalue()
+    return part(range(1, cv_start)), part(range(cv_start, n))

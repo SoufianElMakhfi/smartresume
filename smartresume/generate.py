@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import llm, prompts, quality
+from . import ats, llm, prompts, quality
 from .profile import EMPLOYMENT_TYPES
 
 MAX_BULLET_CHARS = 80
@@ -112,21 +112,6 @@ def closing_facts(ai_job: dict, job_text: str, profile: dict) -> str:
     return " ".join(parts)
 
 
-def _match_category(name: str, items: list, profile: dict) -> str:
-    """Ordnet eine von der KI benannte Kategorie einer echten Profilkategorie zu."""
-    cats = [s["category"] for s in profile["skills"]]
-    for c in cats:
-        if c.lower() == (name or "").strip().lower():
-            return c
-    wanted = {str(i).strip().lower() for i in items}
-    best, score = "", 0
-    for s in profile["skills"]:
-        hit = len(wanted & {i.lower() for i in s["items"]})
-        if hit > score:
-            best, score = s["category"], hit
-    return best or "Weitere Kenntnisse"
-
-
 def assemble(ai: dict, profile: dict, employment_type: str, extra_info: str = "",
              bullets_per_job: int = 2, max_bullet_chars: int = MAX_BULLET_CHARS, job_text: str = "") -> dict:
     """Baut aus KI-Antwort + Profil die vollständige, renderbare Struktur."""
@@ -155,30 +140,40 @@ def assemble(ai: dict, profile: dict, employment_type: str, extra_info: str = ""
     extra = _parse_extra_skills(extra_info)
     allowed_all = {i.lower(): i for s in profile["skills"] for i in s["items"]}
     allowed_all.update({x.lower(): x for x in extra})
-    skills, used_cats, shown = [], set(), set()   # shown: Skills, die schon im CV stehen (keine Doppelten)
+    shown: set[str] = set()   # Skills, die schon im CV stehen (keine Doppelten)
     lang_cat = bool(profile["languages"])
-    for s in ai.get("skills") or []:
-        idx = _ref_index(s.get("ref"), "S")
-        if idx is not None and 0 <= idx < len(profile["skills"]):
-            cat = profile["skills"][idx]["category"]
-            pool = {i.lower(): i for i in profile["skills"][idx]["items"]}
-            pool.update({x.lower(): x for x in extra})
-        else:
-            cat = _match_category(str(s.get("category") or ""), s.get("items") or [], profile)
-            pool = allowed_all
-        if cat in used_cats or (lang_cat and cat.lower() == "sprachen"):
-            continue
-        items = []
-        for it in s.get("items") or []:
+    keywords = ats.clean_keywords(ai.get("keywords"), profile, extra_info)
+    # Schreibweise der Anzeige erlaubt, wenn die KI den Begriff einem (geprüften) Profil-Skill zugeordnet hat
+    alias = {k["term"].lower(): (k["term"], k["profile"].lower()) for k in keywords
+             if k["profile"] and k["profile"].lower() in allowed_all and k["term"].lower() != k["profile"].lower()}
+    # Jeder Skill landet in SEINER Profilkategorie (die KI ordnet manchmal falsch zu), Reihenfolge nach Relevanz
+    # laut KI; Zusatz-Skills ohne Profileintrag unter „Weitere Kenntnisse“. Max. 5 Kategorien à 6 Einträge.
+    home: dict[str, tuple[str, str]] = {}
+    for sk in profile["skills"]:
+        for i in sk["items"]:
+            home.setdefault(i.lower(), (sk["category"], i))
+    for x in extra:
+        home.setdefault(x.lower(), ("Weitere Kenntnisse", x))
+    groups: dict[str, list[str]] = {}
+    for sk in ai.get("skills") or []:
+        for it in sk.get("items") or []:
             key = str(it).strip().lower()
-            if key in pool and key not in shown:
-                items.append(pool[key])
-                shown.add(key)
-        if items:
-            skills.append({"category": cat, "items": ", ".join(items[:6])})
-            used_cats.add(cat)
-        if len(skills) >= 5:
-            break
+            if key in shown:
+                continue
+            if key in home:
+                (cat, label), marks = home[key], (key,)
+            elif key in alias and alias[key][1] in home and alias[key][1] not in shown:
+                (cat, _), label, marks = home[alias[key][1]], alias[key][0], (key, alias[key][1])
+            else:
+                continue                                   # nicht im Profil → nie in den Lebenslauf
+            if lang_cat and cat.lower() == "sprachen":
+                continue
+            if cat not in groups and len(groups) >= 5:
+                continue
+            if len(groups.setdefault(cat, [])) < 6:
+                groups[cat].append(label)                  # z. B. „MS Excel“ (Anzeige) statt „Excel“ (Profil)
+                shown.update(marks)
+    skills = [{"category": c, "items": ", ".join(v)} for c, v in groups.items() if v]
     if not skills:  # Fallback: die ersten Kategorien des Profils
         for s in profile["skills"]:
             if lang_cat and s["category"].lower() == "sprachen":
@@ -226,6 +221,7 @@ def assemble(ai: dict, profile: dict, employment_type: str, extra_info: str = ""
         "education": education,
         "skills": skills,
         "gaps": [str(g) for g in ai.get("gaps") or []][:6],
+        "keywords": keywords,
         "cover_letter": {
             "company": str(job.get("company") or "").strip(),
             "contact_person": str(job.get("contact_person") or "").strip(),

@@ -1,5 +1,6 @@
 """UI-Tests: die echte app.py wird mit Streamlits AppTest durchgeklickt.
 Die KI wird durch einen Fake-Provider ersetzt (schnell, deterministisch, kostenlos)."""
+import importlib.util
 import json
 from pathlib import Path
 
@@ -185,8 +186,8 @@ def test_profile_page_edit_and_save(env):
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
     _btn(at, "👤 Mein Profil").click()
     _run(at)
-    assert [t.label for t in at.tabs] == ["👤 Persönlich", "💼 Werdegang", "🛠 Kenntnisse", "🎯 Wünsche & Stil",
-                                          "📥 Import"]
+    assert [t.label for t in at.tabs] == ["📥 Lebenslauf importieren", "👤 Persönlich", "💼 Werdegang", "🛠 Kenntnisse",
+                                          "🎯 Wünsche & Stil"]
     assert any("vollständig" in str(getattr(x, "value", "")) or "vollständig" in str(getattr(x, "text", ""))
                for x in at.get("progress"))
     name_input = next(t for t in at.text_input if t.label == "Vor- und Nachname *")
@@ -234,7 +235,8 @@ def test_profile_skills_as_chips_without_duplicates(env):
     assert any(l["language"] == "Spanisch" for l in db.get_profile(uid)["data"]["languages"])
 
 
-@pytest.mark.skipif(render.find_typst() is None, reason="Typst nicht installiert")
+@pytest.mark.skipif(render.find_typst() is None and importlib.util.find_spec("typst") is None,
+                                reason="Typst nicht installiert")
 def test_full_generation_flow(env):
     uid = _user_with_profile()
     at = _login(_run(AppTest.from_file(APP, default_timeout=90)))
@@ -520,3 +522,54 @@ def test_settings_mail_account(env, monkeypatch):
     _btn(at, "💾 Speichern").click()
     _run(at)
     assert db.get_user_settings(uid)["mail"]["password"] == "abcd efgh ijkl mnop"
+
+
+def _progress_text(at):
+    import re as _re
+    for el in at.get("progress"):
+        m = _re.search(r"Profil zu (\d+) %", str(el.proto))
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def test_profile_progress_updates_live_and_jumps(env):
+    uid = _user_with_profile()
+    prof = db.get_profile(uid)["data"]
+    prof["personal"]["name"] = "Max"           # nur Vorname → Punkt offen
+    db.save_profile(uid, data=prof)
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _btn(at, "👤 Mein Profil").click()
+    _run(at)
+    before = _progress_text(at)
+    jump = next(b for b in at.button if b.label.startswith("⬜ Vor- und Nachname"))
+    jump.click()
+    _run(at)
+    assert at.session_state.profile_tab == "👤 Persönlich"
+    assert any("Hier ergänzen" in i.value for i in at.info)
+    next(t for t in at.text_input if t.label == "Vor- und Nachname *").input("Max Mustermann")
+    _run(at)
+    after = _progress_text(at)
+    assert after > before                     # im selben Durchlauf aktualisiert, nicht erst beim nächsten
+    assert not any(b.label.startswith("⬜ Vor- und Nachname") for b in at.button)
+
+
+def test_review_shows_ats_check_and_adds_profile_skill(env, monkeypatch):
+    monkeypatch.setitem(FAKE_AI, "keywords", [
+        {"term": "Shopify", "profile": "Shopify"}, {"term": "Tailwind CSS", "profile": "Tailwind CSS"},
+        {"term": "Vue.js", "profile": ""}, {"term": "Liquid", "profile": "Liquid"}])
+    _user_with_profile()
+    at = _login(_run(AppTest.from_file(APP, default_timeout=90)))
+    next(t for t in at.text_area if t.label.startswith("… oder Anzeigentext")).input(
+        "Frontend Developer (m/w/d) bei Lumora GmbH in Köln. Shopify, Liquid, Tailwind CSS und Vue.js.")
+    _btn(at, "✨ Bewerbung erstellen").click()
+    _run(at)
+    assert at.session_state.gen_step == "review"
+    exp = next(e for e in at.expander if "ATS-Check" in e.label)
+    assert "25 %" in exp.label and "ehrlich möglich: 75 %" in exp.label     # nur Shopify steht drin
+    _btn(at, "In Kenntnisse aufnehmen").click()
+    _run(at)
+    exp = next(e for e in at.expander if "ATS-Check" in e.label)
+    assert "50 %" in exp.label
+    assert any("Tailwind CSS" in str(s.get("items")) for s in at.session_state.gen["structured"]["skills"])
+    assert not any("Vue.js" in str(s.get("items")) for s in at.session_state.gen["structured"]["skills"])

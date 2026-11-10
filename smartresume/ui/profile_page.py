@@ -16,7 +16,8 @@ from .common import (branding, chat_bridge, fallback_chain, fmt_tokens, model_pi
 
 LANG_LEVELS = ["Muttersprache", "Verhandlungssicher (C2)", "Fließend (C1)", "Sehr gut (B2)",
                "Gut (B1)", "Grundkenntnisse (A2)", "Anfänger (A1)"]
-TABS = ["👤 Persönlich", "💼 Werdegang", "🛠 Kenntnisse", "🎯 Wünsche & Stil", "📥 Import"]
+T_IMPORT, T_PERSONAL, T_CAREER, T_SKILLS, T_WISHES = TABS = [
+    "📥 Lebenslauf importieren", "👤 Persönlich", "💼 Werdegang", "🛠 Kenntnisse", "🎯 Wünsche & Stil"]
 
 TEMPLATES = {
     "experience": {"company": "", "role": "", "start": "", "end": "", "location": "", "bullets": []},
@@ -96,15 +97,27 @@ def _add_button(section: str, label: str) -> None:
 def _checklist(d: dict, photo: bytes | None) -> list[tuple[str, bool, str]]:
     p = d["personal"]
     return [
-        ("Vor- und Nachname", len(p["name"].split()) >= 2, TABS[0]),
-        ("E-Mail und Telefon", bool(p["email"] and p["phone"]), TABS[0]),
-        ("Adresse", bool(p["zip_city"]), TABS[0]),
-        ("Bewerbungsfoto", bool(photo), TABS[0]),
-        ("Berufserfahrung oder Ausbildung", bool(d["experience"] or d["education"]), TABS[1]),
-        ("Skills", any(s["items"] for s in d["skills"]), TABS[2]),
-        ("Sprachen", bool(d["languages"]), TABS[2]),
-        ("Verfügbarkeit", bool(d["preferences"]["availability"]), TABS[3]),
+        ("Vor- und Nachname", len(p["name"].split()) >= 2, T_PERSONAL),
+        ("E-Mail und Telefon", bool(p["email"] and p["phone"]), T_PERSONAL),
+        ("Adresse", bool(p["zip_city"]), T_PERSONAL),
+        ("Bewerbungsfoto", bool(photo), T_PERSONAL),
+        ("Berufserfahrung oder Ausbildung", bool(d["experience"] or d["education"]), T_CAREER),
+        ("Skills", any(s["items"] for s in d["skills"]), T_SKILLS),
+        ("Sprachen", bool(d["languages"]), T_SKILLS),
+        ("Verfügbarkeit", bool(d["preferences"]["availability"]), T_WISHES),
     ]
+
+
+def _jump(tab: str, label: str) -> None:
+    st.session_state.profile_tab = tab
+    st.session_state.profile_focus = label
+
+
+def _focus_hint(tab: str) -> None:
+    """Zeigt nach einem Klick in der Checkliste oben im Bereich, was hier fehlt."""
+    focus = st.session_state.get("profile_focus")
+    if focus and st.session_state.get("profile_tab") == tab:
+        st.info(f"👉 Hier ergänzen: **{focus}**", icon="✏️")
 
 
 def _progress(d: dict, photo: bytes | None) -> None:
@@ -115,9 +128,14 @@ def _progress(d: dict, photo: bytes | None) -> None:
         st.success("Dein Profil ist vollständig – bereit für Bewerbungen.", icon="✅")
         return
     with st.container(border=True):
-        st.progress(done / len(checks), text=f"**Profil zu {round(100 * done / len(checks))} % vollständig**")
-        st.markdown("  \n".join(f"{'✅' if ok else '⬜'} {label}" + ("" if ok else f" → *{tab}*")
-                                for label, ok, tab in checks))
+        st.progress(done / len(checks), text=f"**Profil zu {round(100 * done / len(checks))} % vollständig** "
+                                             "– klicke auf einen offenen Punkt, um ihn zu ergänzen")
+        if done:
+            st.caption("✅ " + " · ".join(label for label, ok, _ in checks if ok))
+        cols = st.columns(2)
+        for i, (label, tab) in enumerate((label, tab) for label, ok, tab in checks if not ok):
+            cols[i % 2].button(f"⬜ {label} → {tab}", key=f"jump_{label}", on_click=_jump, args=(tab, label),
+                               type="tertiary")
         if missing:
             st.caption("⚠️ Pflicht für Bewerbungen: " + ", ".join(missing))
 
@@ -131,30 +149,35 @@ def render() -> None:
     st.title("Mein Profil")
     st.caption("✅ Alles wird automatisch gespeichert – auch nach Abmelden oder Neustart.")
     empty = not (d["experience"] or d["education"] or d["personal"]["name"])
-    if empty:
-        with st.container(border=True):
-            st.markdown("### 🚀 Schnellstart: Lebenslauf hochladen")
-            st.caption("Die KI füllt dein Profil in einer Minute aus – danach nur noch prüfen. "
-                       "Oder unten alles selbst eintragen.")
-            _cv_import(stored)
-    _progress(d, stored["photo"])
+    # Platzhalter: Fortschritt wird erst NACH dem Auslesen aller Felder gezeichnet → aktualisiert sich live
+    progress_slot = st.container()
 
     new = json.loads(json.dumps(d))
-    tabs = st.tabs(TABS)
+    # Leeres Profil: mit dem Import beginnen; sonst bei den persönlichen Daten
+    tabs = st.tabs(TABS, key="profile_tab", on_change="rerun", default=T_IMPORT if empty else T_PERSONAL)
     with tabs[0]:
-        _personal(d, new, stored)
-    with tabs[1]:
-        _career(d, new)
-    with tabs[2]:
-        _knowledge(d, new)
-    with tabs[3]:
-        _wishes(d, new, stored)
-    with tabs[4]:
-        if not empty:
-            st.markdown("#### Lebenslauf importieren")
-            _cv_import(stored)
-            st.divider()
+        st.markdown("#### 🚀 Am schnellsten: Lebenslauf hochladen")
+        st.caption("Die KI liest deinen Lebenslauf **einmal** aus und füllt alle Bereiche – danach nur noch prüfen "
+                   "und ergänzen. Kein Lebenslauf zur Hand? Dann einfach die anderen Bereiche ausfüllen.")
+        _cv_import(stored)
+        st.divider()
         _backup(stored)
+    with tabs[1]:
+        _focus_hint(T_PERSONAL)
+        _personal(d, new, stored)
+    with tabs[2]:
+        _focus_hint(T_CAREER)
+        _career(d, new)
+    with tabs[3]:
+        _focus_hint(T_SKILLS)
+        _knowledge(d, new)
+    with tabs[4]:
+        _focus_hint(T_WISHES)
+        _wishes(d, new, stored)
+
+    with progress_slot:
+        if not empty or normalize_profile(new) != normalize_profile(empty_profile()):
+            _progress(new, db.get_profile(uid())["photo"])
 
     st.session_state.draft = new
     # Automatisch speichern: jede Änderung landet sofort in der Datenbank.
@@ -503,7 +526,7 @@ def _cv_import(stored: dict) -> None:
 
 
 def _backup(stored: dict) -> None:
-    st.markdown("#### Sichern & übertragen")
+    st.markdown("##### 💾 Profil sichern & übertragen")
     c1, c2 = st.columns(2)
     c1.download_button("⬇ Profil als Datei sichern", json.dumps(stored["data"], ensure_ascii=False, indent=2),
                        file_name="profil.json", mime="application/json", use_container_width=True)

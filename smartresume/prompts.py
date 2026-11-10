@@ -49,6 +49,11 @@ Gehalt, Eintrittstermin, Kündigungsfrist NIE selbst erwähnen – das ergänzt 
 - skills: 3–5 Kategorien (Referenz S1, S2 … oder "X" für ZUSATZANGABEN), je 3–6 Einträge – NUR Einträge, die wörtlich im Profil bzw. den Zusatzangaben stehen. Die relevantesten zuerst.
 - summary: 2 Sätze für das Deckblatt, konkret auf die Stelle bezogen, Ich-Form, OHNE den Arbeitgeber anzusprechen (kein Sie/Du/Ihr/euer).
 
+# ATS (Bewerbermanagement-Software filtert nach Begriffen der Anzeige)
+- Hat der Bewerber laut PROFIL eine geforderte Fähigkeit, verwende in Bullets und Anschreiben die EXAKTE Schreibweise der Anzeige, wenn es inhaltlich dasselbe ist ("MS Excel" statt "Excel", "Kundenservice" statt "Kundenbetreuung", "SAP S/4HANA" nur wenn das Profil genau das nennt).
+- Bringe die wichtigsten zutreffenden Begriffe der Anzeige natürlich unter – nur wo sie wahr sind, kein Aneinanderreihen von Schlagwörtern.
+- keywords: die 8–15 wichtigsten Anforderungen der Anzeige (Fachkenntnisse, Tools, Qualifikationen, Fachbegriffe) als kurze Begriffe (EIN Begriff pro Eintrag, also "HTML" und "CSS" getrennt) in exakter Schreibweise der Anzeige, wichtigste zuerst – AUCH die, die im Profil FEHLEN (dann "profile": ""), sonst ist der Abgleich wertlos. "profile" = der Eintrag aus dem PROFIL bzw. den ZUSATZANGABEN, der DASSELBE meint (wörtlich so, wie er dort steht). Nur verwandt ist nicht dasselbe ("Excel" ≠ "Power BI").
+
 # ANSCHREIBEN (eine A4-Seite, 150–210 Wörter gesamt)
 - Anrede: Ansprechpartner aus der Anzeige verwenden, falls genannt ("Sehr geehrte Frau Müller," / "Sehr geehrter Herr Schmidt,"), sonst "Sehr geehrte Damen und Herren,". Duzt die Anzeige durchgehend, darf "Hallo [Vorname]," bzw. "Hallo zusammen," und Du verwendet werden – dann konsequent.
 - p1 (1–2 Sätze): Konkreter Bezug zu einer Aufgabe/einem Produkt aus der Anzeige + warum der Bewerber genau dafür passt. Kein generischer Einstieg.
@@ -66,7 +71,8 @@ Gehalt, Eintrittstermin, Kündigungsfrist NIE selbst erwähnen – das ergänzt 
   "experience": [{{"ref": "E1", "bullets": ["…", "…"]}}],
   "skills": [{{"ref": "S1", "category": "Kategoriename", "items": ["…", "…"]}}],
   "cover_letter": {{"salutation": "Sehr geehrte Damen und Herren,", "p1": "…", "p2": "…", "p3": "…", "p4": "…"}},
-  "gaps": ["Anforderung der Stelle, die im Profil fehlt", "…"]
+  "gaps": ["Anforderung der Stelle, die im Profil fehlt", "…"],
+  "keywords": [{{"term": "Begriff wie in der Anzeige", "profile": "gleichbedeutender Profileintrag oder leer"}}]
 }}"""
 
 

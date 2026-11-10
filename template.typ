@@ -10,7 +10,7 @@
 #let L = data.labels
 #let P = data.person
 
-#set document(title: L.document_title, author: P.name)
+#set document(title: data.doc_title, author: P.name, keywords: data.doc_keywords)
 #set text(font: data.font, lang: "de", fill: ink, size: 10pt, weight: 400)
 
 // Fügt Text ein und verlinkt das Wort "Portfolio" (falls URL vorhanden)
@@ -150,9 +150,17 @@
   v(2pt)
 }
 
-#text(size: 20pt, weight: 700)[#L.cv]
+// Name + „Lebenslauf“ oben: Wird der Lebenslauf einzeln hochgeladen, erkennt jedes Bewerbersystem, von wem er ist.
+#text(size: 20pt, weight: 700)[#P.name]
+#v(-6pt)
+#text(size: 11pt, weight: 600, fill: accent)[#L.cv]
 #v(-4pt)
 #text(size: 9pt, fill: muted)[#P.contact_line]
+// Links als lesbarer Text (Symbole allein kann Bewerber-Software nicht lesen)
+#if data.show_links and P.links_line != "" [
+  #v(-6pt)
+  #text(size: 9pt, fill: muted)[#P.links_line]
+]
 
 #if data.experience.len() > 0 {
   section(L.experience)

@@ -1,4 +1,5 @@
 import io
+import importlib.util
 import json
 from pathlib import Path
 
@@ -9,7 +10,8 @@ from smartresume import generate, render
 from smartresume.profile import from_legacy_master, normalize_profile
 
 ROOT = Path(__file__).resolve().parent.parent
-needs_typst = pytest.mark.skipif(render.find_typst() is None, reason="Typst nicht installiert")
+needs_typst = pytest.mark.skipif(render.find_typst() is None and importlib.util.find_spec("typst") is None,
+                                reason="Typst nicht installiert")
 
 
 def _profile():
@@ -96,7 +98,7 @@ def test_render_with_python_typst_fallback(monkeypatch):
     assert "Lebenslauf" in render.pdf_text(pdf)[2]
 
 
-@needs_typst
+@pytest.mark.skipif(render.find_typst() is None, reason="prüft den Aufruf der Typst-CLI")
 def test_icons_follow_accent_color(monkeypatch, tmp_path):
     """Icons werden in der Akzentfarbe eingefärbt (nicht fest Petrol)."""
     captured = {}

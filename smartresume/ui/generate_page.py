@@ -7,7 +7,7 @@ from datetime import date
 
 import streamlit as st
 
-from .. import bridge, db, generate, llm, mailer, quality, render
+from .. import ats, bridge, db, generate, llm, mailer, quality, render
 from ..profile import EMPLOYMENT_TYPES, add_skills, default_employment_type, is_profile_usable
 from ..scrape import ScrapeError, scrape_url
 from .common import (branding, chat_bridge, check_limit, fallback_chain, fmt_tokens, go, model_picker,
@@ -295,6 +295,7 @@ def _review() -> None:
         st.caption("🛠 Das Anschreiben wurde nach der Erstellung einmal automatisch korrigiert.")
     for line in g.get("log", []):
         st.caption(line)
+    _ats_panel(s)
     if s.get("gaps"):
         st.info("**Anforderungen, die dein Profil nicht belegt** – werden im Anschreiben nicht behauptet:\n\n"
                 + "\n".join(f"- {x}" for x in s["gaps"]), icon="🧭")
@@ -377,10 +378,17 @@ def _render(s: dict, prof: dict, g: dict) -> bytes:
         show_photo=g.get("show_photo", True), show_links=g.get("show_links", True))
 
 
-def _file_name(profile: dict, company: str) -> str:
-    def slug(x):
-        return re.sub(r"[^\w-]+", "_", x or "").strip("_")[:40]
-    return f"Bewerbung_{slug(profile['personal']['name'])}_{slug(company) or 'Unternehmen'}.pdf"
+def _slug(x: str) -> str:
+    return re.sub(r"[^\w-]+", "_", x or "").strip("_")[:40]
+
+
+def _file_name(profile: dict, company: str, kind: str = "Bewerbung") -> str:
+    """Bewerbung_Max_Mustermann_Firma.pdf · Anschreiben_Max_Mustermann_Firma.pdf · Lebenslauf_Max_Mustermann.pdf
+    (Personaler und Bewerbersysteme ordnen Dateien so eindeutig zu)."""
+    name = _slug(profile["personal"]["name"])
+    if kind == "Lebenslauf":
+        return f"Lebenslauf_{name}.pdf"
+    return f"{kind}_{name}_{_slug(company) or 'Unternehmen'}.pdf"
 
 
 def _done() -> None:
@@ -397,6 +405,16 @@ def _done() -> None:
     st.download_button("⬇ PDF herunterladen (Deckblatt, Anschreiben, Lebenslauf)", pdf,
                        file_name=_file_name(prof["data"], cl.get("company")), mime="application/pdf",
                        type="primary", use_container_width=True)
+    try:
+        letter_pdf, cv_pdf = render.split_pdf(pdf)
+        st.caption("Für Bewerbungsportale, die Anschreiben und Lebenslauf einzeln verlangen:")
+        d1, d2 = st.columns(2)
+        d1.download_button("⬇ Nur Anschreiben", letter_pdf, mime="application/pdf", use_container_width=True,
+                           file_name=_file_name(prof["data"], cl.get("company"), "Anschreiben"))
+        d2.download_button("⬇ Nur Lebenslauf", cv_pdf, mime="application/pdf", use_container_width=True,
+                           file_name=_file_name(prof["data"], cl.get("company"), "Lebenslauf"))
+    except Exception:  # noqa: BLE001 – Aufteilen ist ein Extra; die Gesamt-PDF bleibt immer verfügbar
+        pass
     c1, c2 = st.columns(2)
     if c1.button("✏️ Bearbeiten", use_container_width=True):
         st.session_state.gen_step = "review"
@@ -484,3 +502,48 @@ def _send_section(g: dict, s: dict, prof: dict, pdf: bytes) -> None:
         if st.button("Direkt aus SmartResume senden – E-Mail-Konto einrichten (2 Minuten)"):
             go("settings")
             st.rerun()
+
+
+def _ats_fix(action: str, term: str, profile_word: str = "") -> None:
+    s = st.session_state.gen["structured"]
+    if action == "add":
+        ats.add_to_skills(s, term)
+    else:
+        ats.use_ad_wording(s, term, profile_word)
+    st.session_state.review_rev += 1          # Eingabefelder (Fähigkeiten) neu aufbauen
+
+
+def _ats_panel(s: dict) -> None:
+    """Schlüsselbegriffe der Anzeige vs. Unterlagen – so, wie Bewerbermanagement-Software (ATS) filtert."""
+    rep = ats.report(s)
+    if not rep:
+        return
+    score, best = ats.score(rep), ats.best_possible(rep)
+    icon = "🟢" if score >= 75 else "🟡" if score >= 50 else "🔴"
+    fixable = [r for r in rep if r["status"] in ("addable", "wording")]
+    with st.expander(f"{icon} ATS-Check: {score} % der Schlüsselbegriffe der Anzeige abgedeckt"
+                     + (f" – ehrlich möglich: {best} %" if best > score else ""), expanded=bool(fixable)):
+        st.caption("Viele Firmen lassen Bewerbungen zuerst von Software (z. B. Personio, SAP SuccessFactors, "
+                   "Workday) nach den Begriffen der Anzeige durchsuchen – oft wörtlich. Hier siehst du, welche "
+                   "davon in deinen Unterlagen stehen. Ergänzt wird nur, was laut deinem Profil stimmt.")
+        for i, r in enumerate(rep):
+            t, p = r["term"], r["profile"]
+            if r["status"] == "ok":
+                st.markdown(f"✅ **{t}**")
+            elif r["status"] == "bridge":
+                st.markdown(f"🔹 **{t}** – im Anschreiben ehrlich als Lücke angesprochen (die Software findet den "
+                            "Begriff trotzdem).")
+            elif r["status"] == "wording":
+                c1, c2 = st.columns([3, 2])
+                c1.markdown(f"🔤 **{t}** – steht als „{p}“ drin. Die Software sucht evtl. genau „{t}“.")
+                c2.button(f"„{t}“ verwenden", key=f"ats_w{i}", on_click=_ats_fix, args=("wording", t, p),
+                          use_container_width=True)
+            elif r["status"] == "addable":
+                c1, c2 = st.columns([3, 2])
+                c1.markdown(f"➕ **{t}** – hast du laut Profil" + (f" („{p}“)" if p.lower() != t.lower() else "")
+                            + ", steht aber nicht in den Unterlagen.")
+                c2.button("In Kenntnisse aufnehmen", key=f"ats_a{i}", on_click=_ats_fix, args=("add", t),
+                          use_container_width=True)
+            else:
+                st.markdown(f"⬜ **{t}** – nicht in deinem Profil. Kannst du es doch? Dann im Profil ergänzen "
+                            "und die Bewerbung neu erstellen.")

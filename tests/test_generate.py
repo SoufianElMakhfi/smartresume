@@ -98,8 +98,8 @@ def test_quality_flags_inflation_weakness_and_facts(profile):
     assert "„37“" in msgs                  # erfundene Zahl
     assert "Platzhalter" in msgs
     assert "Gehalt" in msgs
-    # 10 Jahre, Platzhalter, Gehalt, erfundene Zahlen 10/37/50.000
-    assert len(quality.blocking_problems(f)) == 6
+    # 10 Jahre, Platzhalter, Gehalt, erfundene Zahlen 10/37/50.000, „Experte“ (ausdrücklich verboten)
+    assert len(quality.blocking_problems(f)) == 7
 
 
 def test_quality_clean_text_has_no_errors(profile):
@@ -107,9 +107,13 @@ def test_quality_clean_text_has_no_errors(profile):
     s["cover_letter"].update(
         p1="In Ihrer Anzeige suchen Sie Unterstützung beim Ausbau Ihres React-Frontends. "
            "Genau daran arbeite ich seit 2023 bei der ACME GmbH.",
-        p2="Dort entwickle ich React-Komponenten und habe automatisierte Tests eingeführt. " * 3,
-        p3="Ich kläre Anforderungen früh und liefere in kleinen, prüfbaren Schritten. " * 2,
-        p4="Ich freue mich auf ein Gespräch, in dem ich Ihnen mein Portfolio zeigen kann. " * 2)
+        p2="Dort entwickle ich React-Komponenten und habe automatisierte Tests eingeführt. "
+           "Neue Funktionen stimme ich direkt mit dem Kundenservice ab. "
+           "Fehlerberichte aus dem Support arbeite ich innerhalb eines Sprints ab.",
+        p3="Ich kläre Anforderungen früh und liefere in kleinen, prüfbaren Schritten. "
+           "Rückfragen stelle ich lieber am ersten Tag als am letzten.",
+        p4="Ich freue mich auf ein Gespräch, in dem ich Ihnen mein Portfolio zeigen kann. "
+           "Gern bringe ich ein laufendes Beispielprojekt mit.")
     f = quality.check_application(s, profile, job_text="React")
     assert [x for x in f if x["level"] == "error"] == []
 
@@ -232,3 +236,15 @@ def test_no_duplicate_skills_in_cv(profile):
     assert all_items.count(item.lower()) == 1
     assert "docker" in all_items and all_items.count("docker") == 1
     assert sum(1 for c in s["skills"] if c["category"] == "Weitere Kenntnisse") <= 1
+
+
+def test_skills_land_in_their_own_category(profile):
+    ai = json.loads(json.dumps(AI_ANSWER))
+    cats = profile["skills"]
+    a, b = cats[0]["items"][0], cats[1]["items"][0]
+    # KI packt Skills aus zwei Kategorien unter einen erfundenen Namen + einen Skill, der nicht im Profil steht
+    ai["skills"] = [{"category": "Technik", "items": [a, b, "Kubernetes"]}]
+    s = generate.assemble(ai, profile, "Vollzeit")
+    by = {c["category"]: c["items"] for c in s["skills"]}
+    assert a in by[cats[0]["category"]] and b in by[cats[1]["category"]]
+    assert "Technik" not in by and "Kubernetes" not in str(by)

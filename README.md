@@ -80,7 +80,8 @@ Logins). Kein Cloud-Dienst nötig, Backup = diese Datei kopieren. `data/` ist ni
 | Jobs finden | Stellensuche über die Jobbörse der Bundesagentur für Arbeit (kein Konto nötig): Was, Wo, Umkreis, Beschäftigungsart, Zeitraum. Zeigt Gehalt, Homeoffice, Profil-Treffer und „schon beworben“. Optional **KI-Passung** 0–100 % mit Begründung und fehlenden Anforderungen (ein Aufruf für bis zu 25 Stellen). **„Bewerbung erstellen“** übernimmt den kompletten Anzeigentext. |
 | Bewerbung | Link (liest JobPosting-JSON-LD der Jobbörsen) oder Text, Beschäftigungsart (Vollzeit, Teilzeit, Werkstudent, Praktikum, Ausbildung, Minijob, Freelance), Zusatz-Skills, Schwerpunkt. |
 | Versand | E-Mail-Adresse wird aus der Anzeige übernommen (Bewerbungsadresse zuerst). Direkt aus der App senden – mit PDF im Anhang, über das eigene Postfach (Gmail mit App-Passwort, GMX, WEB.DE, eigener SMTP; einrichten unter Einstellungen). Ohne Einrichtung: fertiger Gmail-Entwurf bzw. Mailprogramm. Gesendete Bewerbungen landen in „Meine Bewerbungen“. |
-| Ehrlichkeit | Die KI liefert nur Texte + Referenzen auf Profileinträge; Firmen, Zeiträume, Ausbildung, Gehalt und Eintrittstermin setzt Python aus dem Profil ein. Regel-Check (Übertreibung, Unterverkaufen, erfundene Zahlen, Du/Sie-Mix, Widersprüche) + optionaler KI-Faktencheck + Auto-Korrektur. Fehlende Anforderungen werden angezeigt, aber nie behauptet. |
+| ATS-Optimierung | Für Bewerbermanagement-Software (Personio, SAP SuccessFactors, Workday …): Die KI nutzt die exakten Begriffe der Anzeige, wo sie laut Profil zutreffen („MS Excel“ statt „Excel“). **ATS-Check** in der Vorschau: Anteil der Schlüsselbegriffe der Anzeige in den Unterlagen, ehrlich erreichbarer Wert, Ein-Klick-Korrekturen (nur für Fähigkeiten aus dem Profil). PDF mit echtem Text, Standard-Überschriften, Name auf jeder Lebenslauf-Seite, Links als lesbarer Text, Titel/Schlüsselwörter in den PDF-Metadaten; Anschreiben und Lebenslauf zusätzlich als getrennte Dateien für Portale. |
+| Ehrlichkeit | Die KI liefert nur Texte + Referenzen auf Profileinträge; Firmen, Zeiträume, Ausbildung, Gehalt und Eintrittstermin setzt Python aus dem Profil ein. Regel-Check (Übertreibung, Unterverkaufen, Wiederholungen, erfundene Zahlen, Du/Sie-Mix, Widersprüche) + optionaler KI-Faktencheck + Auto-Korrektur. Fehlende Anforderungen werden angezeigt, aber nie behauptet. |
 | Modelle | Gemini, OpenAI-kompatibel (Groq, Mistral, OpenRouter, Ollama …), Claude. Automatischer Wechsel bei Limit/Timeout/Überlastung, zuletzt Abo-Modus. |
 | Verwaltung | Nutzer anlegen/löschen, E-Mail ändern, Token-Verbrauch pro Nutzer, Tageslimit für KI-Bewerbungen. |
 
@@ -118,7 +119,7 @@ Ein Tag `v*` (z. B. `git tag v1.0.0 && git push origin v1.0.0`) baut die `.exe` 
 sie an das Release.
 
 Struktur: `launcher.py` (Start der App/.exe), `smartresume/` (Logik: `auth`, `bridge`, `config`, `paths`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`,
-`cv_import`, `scrape`, `jobsearch`, `mailer`, `render`, `branding`) und `smartresume/ui/` (Seiten). `template.typ` liest alle Inhalte
+`cv_import`, `scrape`, `jobsearch`, `mailer`, `ats`, `render`, `branding`) und `smartresume/ui/` (Seiten). `template.typ` liest alle Inhalte
 aus `data.json` – Texte werden nie als Typst-Markup interpretiert. Tests nutzen ein erfundenes Beispielprofil
 (`tests/fixtures/`).
 

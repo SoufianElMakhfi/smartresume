@@ -17,7 +17,7 @@ INFLATION = [
 WEAK = [
     "leider", "obwohl ich keine", "obwohl ich kein", "trotz fehlender", "ich hoffe", "ich würde mich sehr freuen",
     "ich traue mir zu", "ich glaube, dass ich", "vielleicht", "eventuell", "nicht viel erfahrung",
-    "wenig erfahrung", "nur wenig", "bin mir nicht sicher", "auch wenn ich noch",
+    "wenig erfahrung", "nur wenig", "bin mir nicht sicher", "auch wenn ich noch", " zwar ",
 ]
 FLOSKELN = [
     "hiermit bewerbe ich mich", "mit großem interesse", "hochmotiviert", "leidenschaft", "ich brenne für",
@@ -28,6 +28,26 @@ SALARY_RE = re.compile(r"gehalt|brutto|netto|vergütung|\bk€|€\s*(?:pro|im)\
 YEARS_RE = re.compile(r"(\d{1,2})\s*\+?\s*jahre?n?\b", re.IGNORECASE)
 NUMBER_RE = re.compile(r"(?<![\w./])(\d+(?:[.,]\d+)?)(?:\s?(%|\+))?")
 PLACEHOLDER_RE = re.compile(r"\[[^\]]{2,}\]|\{\{|XXX|<[^>]+>")
+
+
+FORBIDDEN_INFLATION = {"experte", "expertin", "langjährig", "umfassende", "umfassender", "tiefgreifend", "fundiert",
+                       "spezialist", "führend"}
+
+
+def _sentences(text: str) -> list[str]:
+    return [x.strip() for x in re.split(r"(?<=[.!?])\s+", text or "") if len(x.strip().split()) >= 4]
+
+
+def _repeated_sentence(text: str) -> str | None:
+    """Zwei Sätze, die fast dasselbe sagen (≥ 60 % gleiche Wörter) – wirkt unaufmerksam."""
+    sents = _sentences(text)
+    for i, a in enumerate(sents):
+        wa = set(re.findall(r"\w{3,}", a.lower()))
+        for b in sents[i + 1:]:
+            wb = set(re.findall(r"\w{3,}", b.lower()))
+            if wa and wb and len(wa & wb) / min(len(wa), len(wb)) >= 0.6:
+                return b
+    return None
 
 
 def _norm_num(s: str) -> str:
@@ -54,7 +74,10 @@ def check_application(structured: dict, profile: dict, job_text: str = "", extra
     # 1) Übertreibung
     for w in INFLATION:
         if w in low:
-            add("warn", f"Mögliche Übertreibung: „{w.strip()}“ – nur verwenden, wenn das Profil es klar belegt.")
+            if w.strip() in FORBIDDEN_INFLATION:   # im Prompt ausdrücklich verboten → automatische Korrektur
+                add("error", f"Übertreibung: „{w.strip()}“ – klingt nach mehr Erfahrung, als das Profil belegt.")
+            else:
+                add("warn", f"Mögliche Übertreibung: „{w.strip()}“ – nur verwenden, wenn das Profil es klar belegt.")
     years_have = total_experience_years(profile)
     for m in YEARS_RE.finditer(full):
         claimed = int(m.group(1))
@@ -65,6 +88,10 @@ def check_application(structured: dict, profile: dict, job_text: str = "", extra
     for w in WEAK:
         if w in low:
             add("warn", f"Schwächt den Bewerber: „{w}“ – selbstbewusster formulieren.")
+
+    rep = _repeated_sentence(letter)
+    if rep:
+        add("error", f"Wiederholung: „{rep[:70]}…“ sagt fast dasselbe wie ein Satz davor.")
 
     # 3) Floskeln (global + eigene verbotene Phrasen)
     own = [p.lower() for p in profile.get("writing_style", {}).get("forbidden_phrases", [])]
