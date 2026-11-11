@@ -4,7 +4,8 @@ Die BA bietet keine offizielle API; die Jobbörse nutzt aber eine öffentliche S
 Projekt bundesAPI dokumentiert (https://github.com/bundesAPI/jobsuche-api). Kein Konto, kein Key nötig.
 Kontaktdaten der Arbeitgeber gibt die Schnittstelle nicht heraus (Captcha) – die bleiben unangetastet.
 
-Ablauf: search() → Liste von Stellen, details_text() → kompletter Anzeigentext für die Bewerbung.
+Ablauf: search() → passende Stellen (mit verwandten Begriffen gesucht, selbst auf Relevanz geprüft),
+details_text() → kompletter Anzeigentext für die Bewerbung.
 """
 from __future__ import annotations
 
@@ -20,18 +21,181 @@ RADII = [0, 10, 25, 50, 100, 200]
 MAX_AGE = {"Heute": 0, "Letzte 7 Tage": 7, "Letzte 14 Tage": 14, "Letzte 30 Tage": 30, "Alle": 100}
 
 # Beschäftigungsart der App → Filter der BA (angebotsart: 1 Arbeit, 2 Selbstständigkeit, 4 Ausbildung,
-# 34 Praktikum/Trainee/Werkstudent; arbeitszeit: vz, tz, mj). Die BA verknüpft Suchwörter mit UND –
-# „Werkstudent Informationssicherheit“ findet daher „Werkstudium Informationssicherheit“ nicht. Deshalb:
-# Filter 34 + Suchwort, zusätzlich eine Suche „Werkstudent <Suchwort>“; passende Titel („prefer“) zuerst.
+# 34 Praktikum/Trainee/Werkstudent; arbeitszeit: vz, tz, mj). „title“: woran man die Art im Stellentitel erkennt
+# (Filter 34 enthält Werkstudent, Praktikum und Trainee gemischt).
 _FILTERS = {
     "Vollzeit": {"angebotsart": 1, "arbeitszeit": "vz"},
     "Teilzeit": {"angebotsart": 1, "arbeitszeit": "tz"},
-    "Werkstudent": {"angebotsart": 34, "word": "Werkstudent", "prefer": ("werkstud",)},
-    "Praktikum": {"angebotsart": 34, "word": "Praktikum", "prefer": ("prakti",)},
+    "Werkstudent": {"angebotsart": 34, "word": "Werkstudent",
+                    "title": r"werkstud|student|studierend|studi-?job|hilfskraft"},
+    "Praktikum": {"angebotsart": 34, "word": "Praktikum", "title": r"prakti|intern\b|internship|praxissemester"},
     "Ausbildung": {"angebotsart": 4},
     "Minijob": {"angebotsart": 1, "arbeitszeit": "mj"},
     "Freelance": {"angebotsart": 2},
 }
+
+# ---------------------------------------------------------------------------
+# Fachgebiete. Die Jobbörse sucht wortgenau und verknüpft Wörter mit UND: „Software“ findet weder
+# „Softwareentwicklung“ noch „Informatiker“ oder „Developer“. Erkennt die App im Suchbegriff ein Fachgebiet
+# („trigger“, je Wort geprüft), sucht sie zusätzlich nach dessen Begriffen („queries“) und prüft danach selbst,
+# ob Titel („title“) bzw. Berufsangabe der BA („beruf“) wirklich zum Gebiet passen – sonst fliegt die Stelle raus.
+# ---------------------------------------------------------------------------
+FIELDS = [
+    {"name": "IT & Software",
+     "trigger": r"software|informati|^entwickler|^developer|programmier|full.?stack|front.?end|back.?end|devops|"
+                r"coding|^it$|^web|^apps?$|java|python|script|cloud|^sap$|^dev",
+     "queries": ["Software", "Softwareentwicklung", "Softwareentwickler", "Developer", "Informatik", "Informatiker",
+                 "Wirtschaftsinformatik", "IT", "Fullstack", "Frontend", "Backend", "Webentwicklung", "Programmierer",
+                 "DevOps", "Java", "Python", "SAP", "Cloud"],
+     "title": r"software|informati|programmier|full.?stack|front.?end|back.?end|devops|web.?(?:entwickl|develop)|"
+              r"anwendungsentwickl|\bjava\b|python|javascript|typescript|\breact\b|angular|(?<!\w)\.net\b|\bc#|"
+              r"c\+\+|\bsap\b|\bit\b|\bentwickler|developer|(?:app|software|web).?development|\bcloud|\bki\b|"
+              r"\bai\b|künstliche intelligenz|machine learning|data engineer|test.?automat|\bqa\b|"
+              r"requirements.?engineer|\bcod(?:ing|er)\b|datenbank|database|linux|system.?administr|helpdesk|"
+              r"\berp\b|\bcrm\b",
+     "beruf": r"informati|software|programmier|anwendungsentwick|system.?administr|datenbank|data.?scien|"
+              r"web.?(?:entwick|design)|\bit-(?:system|administr|anwend|support|sicherheit)|\(it\)"},
+    {"name": "IT-Sicherheit & Datenschutz",
+     "trigger": r"informationssicherheit|it-?sicherheit|security|cyber|pentest|^isms$|datenschutz",
+     "queries": ["Informationssicherheit", "IT-Sicherheit", "IT Security", "Cyber Security", "Security",
+                 "Datenschutz", "ISMS", "Pentest"],
+     "title": r"informationssicherheit|it-?sicherheit|security|cyber|pentest|penetration|\bisms\b|datenschutz|"
+              r"\bsoc\b|forensi|\biam\b",
+     "beruf": r"\(it\)|informati|datenschutz"},
+    {"name": "Data & KI",
+     "trigger": r"^data|^daten(?!schutz)|analy|statisti|^bi$|intelligence|power.?bi|tableau|^machine|^ki$|^ai$|"
+                r"science",
+     "queries": ["Data", "Data Science", "Data Analyst", "Datenanalyse", "Business Intelligence", "Analytics",
+                 "Machine Learning", "KI", "Statistik", "Power BI", "Reporting"],
+     "title": r"\bdata\b|daten(?!schutz)|analy|statisti|intelligence|\bbi\b|power.?bi|tableau|machine learning|"
+              r"\bki\b|\bai\b|künstliche|reporting|data.?scien",
+     "beruf": r"data|statisti|mathemati|informati|analyst"},
+    {"name": "Marketing & Kommunikation",
+     "trigger": r"marketing|social|^seo$|^sea$|content|kommunikation|^pr$|brand|commerce|redakt|media",
+     "queries": ["Marketing", "Online Marketing", "Social Media", "Content", "Kommunikation", "PR",
+                 "E-Commerce", "Brand", "Redaktion", "SEO"],
+     "title": r"marketing|social.?media|\bseo\b|\bsea\b|content|kommunikation|\bpr\b|public relations|brand|"
+              r"commerce|redakt|influencer|kampagne|campaign|\bmedia\b",
+     "beruf": r"marketing|kommunikation|\bwerbe|\bpr\b|redakt|online"},
+    {"name": "Vertrieb & Kundenbetreuung",
+     "trigger": r"vertrieb|sales|verkauf|^account|^business$|key.?account|kunden|customer",
+     "queries": ["Vertrieb", "Sales", "Verkauf", "Business Development", "Key Account", "Account Management",
+                 "Kundenbetreuung", "Customer Success", "Innendienst"],
+     "title": r"vertrieb|sales|verkauf|account|business.?develop|kundenbetreu|kundenservice|customer|innendienst|"
+              r"außendienst",
+     "beruf": r"vertrieb|verkauf|sales|kundenberat|kundenbetreu"},
+    {"name": "Finanzen & Controlling",
+     "trigger": r"finanz|finance|controll|buchhalt|accounting|rechnungswesen|steuer|^tax$|audit|prüfung|bank|"
+                r"treasury|payroll|^lohn",
+     "queries": ["Finanzen", "Finance", "Controlling", "Buchhaltung", "Accounting", "Rechnungswesen", "Steuern",
+                 "Tax", "Audit", "Wirtschaftsprüfung", "Treasury"],
+     "title": r"finanz|finance|controll|buchhalt|accounting|rechnungswesen|steuer|\btax\b|audit|prüfung|"
+              r"treasury|payroll|lohn|bilanz|kreditor|debitor|\bbank",
+     "beruf": r"finanz|buchhalt|controll|steuer|bank|bilanz|wirtschaftsprüf"},
+    {"name": "Personal & HR",
+     "trigger": r"personal|^hr$|human|recruit|^people$|talent",
+     "queries": ["Personal", "HR", "Human Resources", "Recruiting", "Personalwesen", "Personalentwicklung",
+                 "Talent Acquisition"],
+     "title": r"personal|\bhr\b|human.?resource|recruit|talent|\bpeople\b",
+     "beruf": r"personal"},
+    {"name": "Design & Medien",
+     "trigger": r"design|^ux$|^ui$|grafik|gestalt|illustr|video|^foto|^film",
+     "queries": ["Design", "UX", "UI Design", "Grafikdesign", "Mediengestaltung", "Produktdesign", "Video"],
+     "title": r"design|\bux\b|\bui\b|grafik|gestalt|illustr|video|\bfoto|motion|\b3d\b|\bfilm",
+     "beruf": r"design|gestalt|grafik|foto|medien"},
+    {"name": "Elektrotechnik & Energie",
+     "trigger": r"elektro|electric|energie|energy|automatisier|embedded|hardware|mechatron",
+     "queries": ["Elektrotechnik", "Electrical Engineering", "Energietechnik", "Automatisierung", "Embedded",
+                 "Hardware", "Mechatronik"],
+     "title": r"elektro|electric|energie|energy|automatisier|embedded|hardware|mechatron|\bsps\b|\bplc\b|"
+              r"schaltung|hochfrequenz",
+     "beruf": r"elektro|energie|mechatron|automatisier"},
+    {"name": "Maschinenbau & Produktion",
+     "trigger": r"maschinenbau|mechanical|konstruk|^cad$|produktion|fertigung|verfahrenstechn|fahrzeug|automotive|"
+                r"luftfahrt|raumfahrt|qualität|quality",
+     "queries": ["Maschinenbau", "Konstruktion", "Mechanical Engineering", "Produktion", "Fertigung",
+                 "Verfahrenstechnik", "Fahrzeugtechnik", "Qualitätsmanagement", "CAD"],
+     "title": r"maschinenbau|mechanical|konstruk|\bcad\b|produktion|fertigung|verfahrenstechn|fahrzeug|automotive|"
+              r"luftfahrt|raumfahrt|qualität|quality|werkstoff",
+     "beruf": r"maschinenbau|konstrukt|ingenieur|produktion|fertigung|verfahrenstechn|qualität"},
+    {"name": "Logistik & Einkauf",
+     "trigger": r"logistik|logistic|supply|einkauf|procurement|beschaffung|^lager|transport|spedition",
+     "queries": ["Logistik", "Supply Chain", "Einkauf", "Procurement", "Beschaffung", "Disposition"],
+     "title": r"logisti|supply|einkauf|procurement|beschaffung|\blager|transport|spedition|disposition",
+     "beruf": r"logisti|lager|einkauf|beschaffung|spedition|supply"},
+    {"name": "Recht & Compliance",
+     "trigger": r"recht|^jura$|jurist|legal|compliance|anwalt|kanzlei",
+     "queries": ["Recht", "Jura", "Legal", "Compliance", "Rechtsabteilung", "Kanzlei"],
+     "title": r"recht|\bjura\b|jurist|legal|compliance|anwalt|kanzlei|patent",
+     "beruf": r"jurist|recht|anwalt|notar"},
+    {"name": "Beratung & Projektmanagement",
+     "trigger": r"consult|beratung|berater|strateg|projektmanag|^projekt|^bwl$|betriebswirt|^business$",
+     "queries": ["Consulting", "Beratung", "Strategie", "Projektmanagement", "Business", "BWL",
+                 "Unternehmensentwicklung"],
+     "title": r"consult|berat|strateg|projekt|project|business|\bbwl\b|betriebswirt|prozessmanag|operations|"
+              r"unternehmensentwicklung",
+     "beruf": r"berater|betriebswirt|projektmanag|business|wirtschaftswissen"},
+]
+
+# Wörter, die nur die Beschäftigungsart beschreiben (die steht schon im Filter) oder nichts aussagen
+_SKIP = re.compile(r"^(?:werkstud\w*|studentisch\w*|student\w*|studierend\w*|praktik\w*|praxissemester|vollzeit|"
+                   r"teilzeit|minijob|ausbildung|azubi|freelance\w*|freiberuf\w*|jobs?|stellen?|m|w|d|und|oder|im|in|"
+                   r"der|die|das|den|dem|für|bereich|als|mit|bei|von|zur|zum|am|an)$")
+QUERY_PAGES = 2     # je Suchwort höchstens 200 Stellen (die BA liefert max. 100 pro Seite)
+POOL_PAGES = 10     # Werkstudent/Praktikum: bis zu 1.000 Stellen der Art im Umkreis, dann selbst filtern
+PAGE_SIZE = 100
+
+
+def _stem(word: str) -> str:
+    """Grober Wortstamm, damit „Buchhaltung“ auch „Buchhalter“ findet."""
+    for suffix in ("ungen", "ung", "erinnen", "erin", "innen", "er", "en", "in", "e", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 5:
+            return word[: -len(suffix)]
+    return word
+
+
+def plan(what: str) -> dict:
+    """Zerlegt den Suchbegriff: eigene Wörter, erkannte Fachgebiete, Suchwörter für die BA und Prüfmuster."""
+    raw = [w.strip("-.") for w in re.findall(r"[\wäöüß.+#-]+", what or "")]
+    raw = [w for w in raw if len(w) >= 2 and not _SKIP.match(w.lower())]
+    words = [w.lower() for w in raw]
+    fields = [f for f in FIELDS if any(re.search(f["trigger"], w) for w in words)]
+    others = [f for f in FIELDS if f not in fields]
+    own = [re.escape(_stem(w)) if len(w) >= 4 else rf"\b{re.escape(w)}\b" for w in words]
+    queries, seen = [], set()
+    for q in ([" ".join(raw)] if len(raw) > 1 else []) + raw + [q for f in fields for q in f["queries"]]:
+        if q.lower() not in seen:
+            seen.add(q.lower())
+            queries.append(q)
+
+    def rx(parts: list[str]):
+        return re.compile("|".join(parts), re.I) if parts else None
+    return {
+        "words": words,
+        "fields": [f["name"] for f in fields],
+        "queries": queries[:24],
+        "own": rx(own),
+        "title": rx([f["title"] for f in fields]),
+        "beruf": rx([f["beruf"] for f in fields] + own),
+        "other": rx([f["title"] for f in others]),
+    }
+
+
+def relevance(job: dict, p: dict) -> int:
+    """0 = passt nicht zum Suchbegriff. Eigenes Wort im Titel (4) > Fachgebiet im Titel (2) > nur Berufsangabe (1).
+    Die Berufsangabe der BA ist oft ungenau („Steuerberatung“ → IT-Berater/in) – sie zählt allein nur, wenn der
+    Titel nicht eindeutig zu einem anderen Fachgebiet gehört."""
+    if not p["words"]:
+        return 1
+    title, beruf = job["title"], job.get("profession") or ""
+    score = 0
+    if p["own"] and p["own"].search(title):
+        score += 4
+    if p["title"] and p["title"].search(title):
+        score += 2
+    if p["beruf"] and p["beruf"].search(beruf) and (score or not (p["other"] and p["other"].search(title))):
+        score += 1
+    return score
 
 
 class JobSearchError(RuntimeError):
@@ -106,32 +270,78 @@ def normalize(j: dict) -> dict:
         "url": j.get("externeURL") or JOB_PAGE.format(ref=ref),
         "external": bool(j.get("externeURL")),
         "profession": j.get("hauptberuf", ""),
+        "professions": [b for b in j.get("alleBerufe") or [] if isinstance(b, str)],
     }
 
 
-def search(what: str, where: str, radius: int = 25, employment_type: str = "Vollzeit", max_age: int = 30,
-           page: int = 1, size: int = 25) -> tuple[list[dict], int]:
-    """Gibt (Stellen, Gesamtzahl) zurück."""
+def _fetch(specs: list[tuple[dict, int]], workers: int = 8) -> list[dict]:
+    """Mehrere Abfragen parallel, jeweils mit Folgeseiten. Schlägt alles fehl, kommt der erste Fehler."""
+    results: list[dict] = []
+    errors: list[JobSearchError] = []
+
+    def one(params: dict):
+        try:
+            return params, _get("/pc/v6/jobs", params)
+        except JobSearchError as e:
+            errors.append(e)
+            return params, None
+
+    def items(data: dict) -> list[dict]:
+        return data.get("ergebnisliste") or data.get("stellenangebote") or []
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        first = list(ex.map(one, [{**p, "page": 1} for p, _ in specs]))
+        more = []
+        for (params, data), (_, pages) in zip(first, specs):
+            if data is None:
+                continue
+            results += items(data)
+            total = int(data.get("maxErgebnisse") or 0)
+            last = min(pages, -(-total // PAGE_SIZE))
+            more += [{**params, "page": n} for n in range(2, last + 1)]
+        for _, data in ex.map(one, more):
+            if data is not None:
+                results += items(data)
+    if errors and not results:
+        raise errors[0]
+    return results
+
+
+def search(what: str, where: str, radius: int = 25, employment_type: str = "Vollzeit",
+           max_age: int = 30) -> tuple[list[dict], int]:
+    """Gibt (Stellen, Anzahl) zurück – nach Relevanz sortiert, Unpassendes bereits entfernt.
+
+    Sucht nach dem Begriff und verwandten Begriffen des erkannten Fachgebiets; bei Werkstudent/Praktikum
+    zusätzlich nach allen Stellen dieser Art im Umkreis. Danach prüft die App selbst, ob Titel bzw. Berufsangabe
+    passen – die Volltextsuche der Jobbörse liefert sonst z. B. Logistik-Jobs, deren Text „Software“ erwähnt."""
     if not (what or "").strip() and not (where or "").strip():
         raise JobSearchError("Bitte einen Suchbegriff oder Ort angeben.")
-    params = build_params(what, where, radius, employment_type, max_age, page, size)
-    data = _get("/pc/v6/jobs", params)
-    jobs = [normalize(j) for j in data.get("ergebnisliste") or data.get("stellenangebote") or []]
-    total = int(data.get("maxErgebnisse") or len(jobs))
+    p = plan(what)
     f = _FILTERS.get(employment_type, {})
-    word = f.get("word", "")
-    if word and page == 1 and word.lower() not in params["was"].lower():
-        extra_params = {k: v for k, v in params.items() if k != "angebotsart"}
-        extra_params["was"] = f"{word} {params['was']}"
-        extra = _get("/pc/v6/jobs", extra_params)
-        seen = {j["ref"] for j in jobs}
-        new = [n for n in (normalize(j) for j in extra.get("ergebnisliste") or []) if n["ref"] not in seen]
-        jobs += new
-        total += len(new)
-    prefer = f.get("prefer")
-    if prefer:   # stabile Sortierung: passende Titel zuerst, sonst Reihenfolge der BA
-        jobs.sort(key=lambda j: not any(w in j["title"].lower() for w in prefer))
-    return [j for j in jobs if j["ref"]], total
+    base = {k: v for k, v in build_params("", where, radius, employment_type, max_age, size=PAGE_SIZE).items()
+            if k not in ("was", "page")}
+    specs = [({**base, "was": q}, QUERY_PAGES) for q in p["queries"]]
+    if f.get("word"):
+        without_type = {k: v for k, v in base.items() if k != "angebotsart"}
+        specs += [({**base, "was": f["word"]}, POOL_PAGES), ({**without_type, "was": f["word"]}, POOL_PAGES)]
+    elif not p["queries"]:
+        specs.append((base, POOL_PAGES))
+
+    jobs: dict[str, dict] = {}
+    for raw in _fetch(specs):
+        j = normalize(raw)
+        if j["ref"] and j["ref"] not in jobs:
+            jobs[j["ref"]] = j
+    out = []
+    for j in jobs.values():
+        if f.get("title") and not re.search(f["title"], j["title"], re.I):
+            continue                                   # z. B. Trainee-Stelle bei der Suche nach Werkstudent
+        j["relevance"] = relevance(j, p)
+        if j["relevance"]:
+            out.append(j)
+    out.sort(key=lambda j: j["published"] or "", reverse=True)
+    out.sort(key=lambda j: -j["relevance"])            # stabil: innerhalb gleicher Relevanz neueste zuerst
+    return out, len(out)
 
 
 def details(ref: str) -> dict:

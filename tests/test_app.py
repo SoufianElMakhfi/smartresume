@@ -433,6 +433,7 @@ def test_job_search_rating_and_apply(env, monkeypatch):
     jobs = [jobsearch.normalize({"referenznummer": r, "stellenangebotsTitel": t, "firma": "Lumora GmbH",
                                  "stellenlokationen": [{"adresse": {"plz": "50672", "ort": "Köln"}}], "entfernung": d})
             for r, t, d in (("R1", "Backend Entwickler (m/w/d)", 3), ("R2", "Frontend Developer (m/w/d)", 8))]
+    jobs[0]["relevance"], jobs[1]["relevance"] = 6, 2       # Reihenfolge vor der KI-Bewertung: R1, R2
     texts = {"R1": "Stellentitel: Backend Entwickler\nJava, Spring", "R2": "Stellentitel: Frontend Developer\n"
              "Unternehmen: Lumora GmbH\nAufgaben: React, TypeScript, Performance."}
     seen = {}

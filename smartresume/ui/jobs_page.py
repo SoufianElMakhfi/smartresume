@@ -7,7 +7,8 @@ from .. import bridge, db, jobsearch, llm
 from ..profile import EMPLOYMENT_TYPES, default_employment_type, profile_city
 from .common import available_models, chat_bridge, fallback_chain, go, notify_switch, record_usage, uid
 
-STATE = ("jobs", "jobs_total", "jobs_texts", "jobs_query", "jobs_page", "jobs_ratings", "jobs_manual")
+STATE = ("jobs", "jobs_total", "jobs_texts", "jobs_query", "jobs_shown", "jobs_ratings", "jobs_manual")
+PAGE = 25          # so viele Stellen auf einmal anzeigen (deren Anzeigentexte werden dann geladen)
 SORTS = ["Passung", "Neueste", "Entfernung"]
 
 
@@ -28,23 +29,24 @@ def _chain():
     return fallback_chain(first)
 
 
-def _run_search(query: dict, page: int) -> None:
-    jobs, total = jobsearch.search(page=page, **query)
-    texts = jobsearch.details_many(jobs)
-    if page == 1:
-        st.session_state.update(jobs=jobs, jobs_total=total, jobs_texts=texts, jobs_query=query, jobs_page=1,
-                                jobs_ratings={}, jobs_manual=False)
-    else:
-        seen = {j["ref"] for j in st.session_state.jobs}
-        st.session_state.jobs += [j for j in jobs if j["ref"] not in seen]
-        st.session_state.jobs_texts.update(texts)
-        st.session_state.jobs_page = page
+def _run_search(query: dict) -> None:
+    jobs, total = jobsearch.search(**query)
+    st.session_state.update(jobs=jobs, jobs_total=total, jobs_texts=jobsearch.details_many(jobs[:PAGE]),
+                            jobs_query=query, jobs_shown=PAGE, jobs_ratings={}, jobs_manual=False)
 
 
-def _rate(profile: dict) -> None:
-    """KI-Bewertung für alle noch unbewerteten Stellen (ein Aufruf)."""
+def _load_texts(jobs: list[dict]) -> None:
+    """Anzeigentexte der sichtbaren Stellen nachladen (für Profil-Treffer, KI-Passung und Bewerbung)."""
+    missing = [j for j in jobs if j["ref"] not in st.session_state.jobs_texts]
+    if missing:
+        with st.spinner(f"Lade {len(missing)} Anzeigen …"):
+            st.session_state.jobs_texts.update(jobsearch.details_many(missing))
+
+
+def _rate(profile: dict, visible: list[dict]) -> None:
+    """KI-Bewertung für die sichtbaren, noch unbewerteten Stellen (ein Aufruf)."""
     ratings = st.session_state.jobs_ratings
-    todo = [j for j in st.session_state.jobs if j["ref"] not in ratings][:25]
+    todo = [j for j in visible if j["ref"] not in ratings][:PAGE]
     if not todo:
         return
     system, user = jobsearch.rating_prompts(profile, todo, st.session_state.jobs_texts)
@@ -64,8 +66,8 @@ def _rate(profile: dict) -> None:
     st.session_state.jobs_manual = True
 
 
-def _manual(profile: dict) -> None:
-    todo = [j for j in st.session_state.jobs if j["ref"] not in st.session_state.jobs_ratings][:25]
+def _manual(profile: dict, visible: list[dict]) -> None:
+    todo = [j for j in visible if j["ref"] not in st.session_state.jobs_ratings][:PAGE]
     if not todo:
         st.session_state.jobs_manual = False
         return
@@ -150,7 +152,7 @@ def render() -> None:
     with st.form("job_search"):
         c1, c2 = st.columns([3, 2])
         what = c1.text_input("Was?", value=saved.get("what", _default_what(profile)),
-                             placeholder="z. B. Frontend Entwickler, Informationssicherheit, Buchhaltung")
+                             placeholder="z. B. Software, Marketing, Controlling, Informationssicherheit")
         where = c2.text_input("Wo?", value=saved.get("where", profile_city(profile)), placeholder="Stadt oder PLZ")
         c3, c4, c5 = st.columns(3)
         etype = saved.get("employment_type") or default_employment_type(profile, settings.get("gen_prefs"))
@@ -171,57 +173,64 @@ def render() -> None:
         query = {"what": what, "where": where, "radius": radius, "employment_type": etype,
                  "max_age": jobsearch.MAX_AGE[age]}
         try:
-            with st.spinner("Suche Stellen und lade die Anzeigen …"):
-                _run_search(query, 1)
+            with st.spinner("Suche Stellen …"):
+                _run_search(query)
         except jobsearch.JobSearchError as e:
             st.error(str(e))
             return
 
     jobs = st.session_state.get("jobs")
     if jobs is None:
-        st.info("Tipp: Suchbegriff kurz halten (z. B. „Informationssicherheit“ statt eines ganzen Stellentitels) – "
-                "die Jobbörse sucht nach allen Wörtern gleichzeitig.", icon=":material/lightbulb:")
+        st.info("Ein allgemeiner Begriff reicht, z. B. „Software“, „Marketing“ oder „Controlling“. Verwandte "
+                "Begriffe (bei „Software“ etwa Informatik, Developer, Fullstack) werden automatisch mitgesucht, "
+                "unpassende Anzeigen aussortiert.", icon=":material/lightbulb:")
         return
+    query = st.session_state.jobs_query
+    fields = jobsearch.plan(query["what"])["fields"]
     if not jobs:
-        st.warning("Keine Stellen gefunden. Versuche einen kürzeren oder allgemeineren Suchbegriff, einen größeren "
+        st.warning("Keine passenden Stellen gefunden. Versuche einen allgemeineren Suchbegriff, einen größeren "
                    "Umkreis oder einen längeren Zeitraum.")
         return
 
     ratings = st.session_state.jobs_ratings
-    keywords = jobsearch.profile_keywords(profile)
-    hits = {j["ref"]: jobsearch.keyword_hits(st.session_state.jobs_texts.get(j["ref"], ""), keywords) for j in jobs}
-    applications = db.list_applications(uid())
-
-    c1, c2 = st.columns([3, 2])
-    c1.markdown(f"**{st.session_state.jobs_total} Stellen gefunden**, {len(jobs)} geladen")
-    unrated = sum(1 for j in jobs if j["ref"] not in ratings)
-    if unrated and not st.session_state.get("jobs_manual"):
-        if c2.button(f"KI-Passung prüfen ({min(unrated, 25)} Stellen)", use_container_width=True,
-                     icon=":material/insights:",
-                     help="Die KI vergleicht jede Anzeige mit deinem Profil und vergibt 0–100 %. "
-                          "Ein Aufruf für alle Stellen (ca. 5.000–12.000 Tokens)."):
-            _rate(profile)
-            st.rerun()
-    if st.session_state.get("jobs_manual"):
-        _manual(profile)
-
     order = st.segmented_control("Sortieren nach", SORTS, default="Passung", key="jobs_sort") or "Passung"
-    if order == "Passung":
-        jobs = sorted(jobs, key=lambda j: (-(ratings.get(j["ref"], {}).get("score", -1)), -len(hits[j["ref"]])))
+    texts = st.session_state.jobs_texts
+    keywords = jobsearch.profile_keywords(profile)
+
+    def hits_of(j):
+        return jobsearch.keyword_hits(texts.get(j["ref"], ""), keywords)
+    if order == "Passung":   # KI-Bewertung > Relevanz zum Suchbegriff > Treffer mit dem Profil
+        jobs = sorted(jobs, key=lambda j: (-(ratings.get(j["ref"], {}).get("score", -1)), -j.get("relevance", 0),
+                                           -len(hits_of(j))))
     elif order == "Neueste":
         jobs = sorted(jobs, key=lambda j: j["published"] or "", reverse=True)
     else:
         jobs = sorted(jobs, key=lambda j: j["distance"] if j.get("distance") is not None else 9999)
+    visible = jobs[:st.session_state.get("jobs_shown", PAGE)]
+    _load_texts(visible)
+    applications = db.list_applications(uid())
 
-    for job in jobs:
-        _card(job, hits[job["ref"]], ratings.get(job["ref"]), jobsearch.already_applied(job, applications))
+    c1, c2 = st.columns([3, 2])
+    c1.markdown(f"**{st.session_state.jobs_total} Stellen gefunden**, {len(visible)} angezeigt")
+    if fields:
+        c1.caption("Fachgebiet erkannt: " + ", ".join(fields) + " – verwandte Begriffe wurden mitgesucht.")
+    unrated = sum(1 for j in visible if j["ref"] not in ratings)
+    if unrated and not st.session_state.get("jobs_manual"):
+        if c2.button(f"KI-Passung prüfen ({min(unrated, PAGE)} Stellen)", use_container_width=True,
+                     icon=":material/insights:",
+                     help="Die KI vergleicht jede angezeigte Anzeige mit deinem Profil und vergibt 0–100 %. "
+                          "Ein Aufruf für alle (ca. 5.000–12.000 Tokens)."):
+            _rate(profile, visible)
+            st.rerun()
+    if st.session_state.get("jobs_manual"):
+        _manual(profile, visible)
 
-    if len(st.session_state.jobs) < st.session_state.jobs_total:
-        if st.button("Weitere Stellen laden", use_container_width=True):
-            try:
-                with st.spinner("Lade weitere Stellen …"):
-                    _run_search(st.session_state.jobs_query, st.session_state.jobs_page + 1)
-            except jobsearch.JobSearchError as e:
-                st.error(str(e))
-                return
+    for job in visible:
+        _card(job, hits_of(job), ratings.get(job["ref"]), jobsearch.already_applied(job, applications))
+
+    rest = len(jobs) - len(visible)
+    if rest > 0:
+        if st.button(f"Weitere {min(rest, PAGE)} Stellen anzeigen (noch {rest})", use_container_width=True,
+                     icon=":material/expand_more:"):
+            st.session_state.jobs_shown = len(visible) + PAGE
             st.rerun()
