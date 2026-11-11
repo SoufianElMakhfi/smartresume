@@ -5,6 +5,8 @@
 - home_dir(): Dateien des Nutzers (.env mit KI-Keys, branding.json, models.json, data/).
               In der .exe der Ordner, in dem SmartResume.exe liegt – so bleibt alles
               lokal neben dem Programm und überlebt Neustarts.
+              Als Store-App (MSIX) ist der Programmordner schreibgeschützt – dann
+              %LOCALAPPDATA%/SmartResume (Windows leitet das in den App-Ordner um).
 SMARTRESUME_HOME überschreibt home_dir() (z. B. für Tests oder portable Installationen).
 """
 from __future__ import annotations
@@ -24,9 +26,23 @@ def app_dir() -> Path:
     return Path(getattr(sys, "_MEIPASS", _SOURCE_ROOT))
 
 
+def packaged() -> bool:
+    """Läuft als installierte Store-App (MSIX-Paket)?"""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    length = ctypes.c_uint32(0)
+    try:   # 15700 = APPMODEL_ERROR_NO_PACKAGE, sonst 122 = Puffer zu klein → hat ein Paket
+        return ctypes.windll.kernel32.GetCurrentPackageFullName(ctypes.byref(length), None) != 15700
+    except (AttributeError, OSError):
+        return False
+
+
 def home_dir() -> Path:
     if os.environ.get("SMARTRESUME_HOME"):
         return Path(os.environ["SMARTRESUME_HOME"])
+    if packaged():
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "SmartResume"
     return Path(sys.executable).resolve().parent if frozen() else _SOURCE_ROOT
 
 

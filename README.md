@@ -76,6 +76,8 @@ bei Aufruf über `localhost` direkt an, sonst steht er in der Server-Konsole.
 
 Alles liegt lokal in einer Datei: `data/smartresume.db` (SQLite – Profile, Fotos, Bewerbungen inkl. PDFs,
 Logins). Kein Cloud-Dienst nötig, Backup = diese Datei kopieren. `data/` ist nicht im Git.
+Bei der `.exe` liegt `data/` neben der `.exe`, bei der Store-App unter `%LOCALAPPDATA%\SmartResume`
+(Windows legt das im App-Ordner ab; wird beim Deinstallieren gelöscht).
 
 ## Funktionen
 
@@ -123,6 +125,19 @@ pip install pyinstaller && python build_exe.py   # baut dist/SmartResume.exe
 
 Ein Tag `v*` (z. B. `git tag v1.0.0 && git push origin v1.0.0`) baut die `.exe` per GitHub Actions und hängt
 sie an das Release.
+
+### Microsoft Store (MSIX)
+
+Der Store signiert die App kostenlos – keine SmartScreen-Warnung. Store-Identität: `packaging/store.json`
+(aus Partner Center → Produktidentität), Manifest: `packaging/msix/AppxManifest.template.xml`,
+Symbol/Store-Bilder: `python packaging/make_assets.py`.
+
+```bash
+python build_msix.py --version 2.0.1    # baut dist/SmartResume-2.0.1.0.msix (braucht makeappx aus dem Windows SDK)
+```
+
+Ohne Windows SDK: GitHub → Actions → „Release“ → „Run workflow“; das `.msix` liegt danach unter
+„Artifacts“. Hochladen in Partner Center unter „Pakete“; jede Einreichung braucht eine höhere Version.
 
 Struktur: `launcher.py` (Start der App/.exe), `smartresume/` (Logik: `auth`, `bridge`, `config`, `paths`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`,
 `cv_import`, `scrape`, `jobsearch`, `mailer`, `ats`, `render`, `branding`) und `smartresume/ui/` (Seiten). `template.typ` liest alle Inhalte

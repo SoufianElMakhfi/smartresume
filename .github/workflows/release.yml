@@ -1,4 +1,4 @@
-# Baut SmartResume.exe und hängt sie an das GitHub-Release.
+# Baut SmartResume.exe und hängt sie an das GitHub-Release; baut außerdem das Store-Paket (.msix).
 # (Kein zusätzliches Build-Artefakt: Private Repos haben nur 500 MB Artefakt-Speicher, die .exe hat ~140 MB.)
 # Auslösen: Tag pushen, z. B.  git tag v1.0.0 && git push origin v1.0.0
 name: Release (Windows-EXE)
@@ -34,3 +34,29 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: dist/SmartResume.exe
+
+  # Store-Paket für Partner Center. Nur als Download unter „Actions → Lauf → Artifacts“ (7 Tage),
+  # wird nicht veröffentlicht – Hochladen und Einreichen passiert von Hand in Partner Center.
+  build-msix:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Abhängigkeiten
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: MSIX bauen
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "" }
+          if ($version) { python build_msix.py --version $version } else { python build_msix.py }
+      - name: Selbsttest (Programm aus dem Paket)
+        run: build\msix\stage\SmartResume\SmartResume.exe --selftest
+      - uses: actions/upload-artifact@v6
+        with:
+          name: SmartResume-msix
+          path: dist/*.msix
+          retention-days: 7

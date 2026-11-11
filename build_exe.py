@@ -4,6 +4,7 @@
     python build_exe.py
 
 Die .exe legt beim Start ihre Daten (data/, .env) im selben Ordner an, in dem sie liegt.
+Für das Store-Paket baut build_msix.py mit pyinstaller_args(onefile=False) einen Programmordner.
 """
 from __future__ import annotations
 
@@ -15,12 +16,13 @@ import PyInstaller.__main__
 SEP = os.pathsep  # ";" unter Windows, ":" sonst
 
 
-def main() -> None:
-    args = [
+def pyinstaller_args(onefile: bool = True) -> list[str]:
+    return [
         "launcher.py",
         "--name", "SmartResume",
-        "--onefile",
+        "--onefile" if onefile else "--onedir",
         "--console",            # Fenster zeigt Adresse/Hinweise; Schließen beendet die App
+        "--icon", os.path.join("packaging", "icon.ico"),
         "--noconfirm",
         "--clean",
         "--add-data", f"app.py{SEP}.",
@@ -42,7 +44,10 @@ def main() -> None:
         "--hidden-import", "PIL",
         "--hidden-import", "pandas",
     ]
-    PyInstaller.__main__.run(args + sys.argv[1:])
+
+
+def main() -> None:
+    PyInstaller.__main__.run(pyinstaller_args() + sys.argv[1:])
 
 
 if __name__ == "__main__":
