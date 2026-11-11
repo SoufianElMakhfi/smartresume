@@ -52,7 +52,8 @@ def test_search_werkstudent_merges_second_query(monkeypatch):
     jobs, total = js.search("Informationssicherheit", "Köln", 25, "Werkstudent", 30)
     assert [j["ref"] for j in jobs] == ["B", "C"]    # Praktikum fliegt bei Werkstudent raus, keine Dubletten
     assert total == 2
-    assert any(c["was"] == "Werkstudent" and "angebotsart" not in c for c in calls)   # alle Werkstudentenstellen
+    assert any(c.get("was") == "Werkstudent" and "angebotsart" not in c for c in calls)  # alle Werkstudentenstellen
+    assert any("was" not in c and c.get("angebotsart") == 34 for c in calls)    # plus ganze Kategorie
 
 
 def _job(ref, title, beruf="", date="2026-11-01"):
@@ -79,18 +80,22 @@ def test_search_finds_related_and_drops_unrelated(monkeypatch):
         _job("TAX", "Werkstudent Steuerberatung", "IT-Berater/in"),                      # Beruf passt, Titel nicht
         _job("HR", "Werkstudent HR Learning & Development", "Personalentwickler/in"),
         _job("TRN", "Trainee Softwareentwicklung", "Softwareentwickler/in"),             # kein Werkstudent
+        _job("THS", "Masterarbeit Softwareentwicklung (m/w/d)", "Softwareentwickler/in"),  # Abschlussarbeit
     ]
+    category_only = [_job("SHK", "Studentische Hilfskraft IT-Support", "Informatiker/in", "2026-09-01")]
     pages = []
 
     def fake_get(path, params=None, timeout=20):
-        pages.append((params["was"], params["page"]))
-        if params["was"] == "Werkstudent":
+        pages.append((params.get("was", ""), params["page"]))
+        if params.get("was") == "Werkstudent":
             return {"maxErgebnisse": 150, "ergebnisliste": pool if params["page"] == 1 else []}
+        if "was" not in params:                                   # ganze Kategorie ohne Suchwort
+            return {"maxErgebnisse": 1, "ergebnisliste": category_only}
         return {"maxErgebnisse": 0, "ergebnisliste": []}
     monkeypatch.setattr(js, "_get", fake_get)
     jobs, total = js.search("Werkstudent Software", "Köln", 50, "Werkstudent", 30)
-    assert [j["ref"] for j in jobs] == ["SW1", "SW2", "SW3"]       # eigenes Wort > Fachgebiet > nur Beruf
-    assert total == 3
+    assert [j["ref"] for j in jobs] == ["SW1", "SW2", "SHK", "SW3"]  # eigenes Wort > Fachgebiet > nur Beruf
+    assert total == 4
     assert ("Werkstudent", 2) in pages                              # Folgeseite des Pools wird geholt
     assert ("Informatik", 1) in pages and ("Software", 1) in pages  # verwandte Begriffe mitgesucht
 

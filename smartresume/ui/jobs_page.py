@@ -183,7 +183,8 @@ def render() -> None:
     if jobs is None:
         st.info("Ein allgemeiner Begriff reicht, z. B. „Software“, „Marketing“ oder „Controlling“. Verwandte "
                 "Begriffe (bei „Software“ etwa Informatik, Developer, Fullstack) werden automatisch mitgesucht, "
-                "unpassende Anzeigen aussortiert.", icon=":material/lightbulb:")
+                "unpassende Anzeigen aussortiert. „Was?“ leer lassen zeigt alle Stellen der gewählten Art im Umkreis.",
+                icon=":material/lightbulb:")
         return
     query = st.session_state.jobs_query
     fields = jobsearch.plan(query["what"])["fields"]

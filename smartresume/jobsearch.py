@@ -27,7 +27,10 @@ _FILTERS = {
     "Vollzeit": {"angebotsart": 1, "arbeitszeit": "vz"},
     "Teilzeit": {"angebotsart": 1, "arbeitszeit": "tz"},
     "Werkstudent": {"angebotsart": 34, "word": "Werkstudent",
-                    "title": r"werkstud|student|studierend|studi-?job|hilfskraft"},
+                    "title": r"werkstud|student|studierend|studi-?job|hilfskraft",
+                    # Abschlussarbeiten und reine Praktika sind keine Werkstudentenjobs (außer „… / Werkstudent“)
+                    "not_title": r"abschlussarbeit|masterand|bachelorand|thesis|masterarbeit|bachelorarbeit|"
+                                 r"prakti"},
     "Praktikum": {"angebotsart": 34, "word": "Praktikum", "title": r"prakti|intern\b|internship|praxissemester"},
     "Ausbildung": {"angebotsart": 4},
     "Minijob": {"angebotsart": 1, "arbeitszeit": "mj"},
@@ -142,7 +145,7 @@ _SKIP = re.compile(r"^(?:werkstud\w*|studentisch\w*|student\w*|studierend\w*|pra
                    r"teilzeit|minijob|ausbildung|azubi|freelance\w*|freiberuf\w*|jobs?|stellen?|m|w|d|und|oder|im|in|"
                    r"der|die|das|den|dem|für|bereich|als|mit|bei|von|zur|zum|am|an)$")
 QUERY_PAGES = 2     # je Suchwort höchstens 200 Stellen (die BA liefert max. 100 pro Seite)
-POOL_PAGES = 10     # Werkstudent/Praktikum: bis zu 1.000 Stellen der Art im Umkreis, dann selbst filtern
+POOL_PAGES = 20     # Werkstudent/Praktikum: bis zu 2.000 Stellen der Art im Umkreis, dann selbst filtern
 PAGE_SIZE = 100
 
 
@@ -323,7 +326,10 @@ def search(what: str, where: str, radius: int = 25, employment_type: str = "Voll
     specs = [({**base, "was": q}, QUERY_PAGES) for q in p["queries"]]
     if f.get("word"):
         without_type = {k: v for k, v in base.items() if k != "angebotsart"}
-        specs += [({**base, "was": f["word"]}, POOL_PAGES), ({**without_type, "was": f["word"]}, POOL_PAGES)]
+        # Viele Anzeigen findet die BA nicht unter „Werkstudent“ („Werkstudierende“, „Studentische Hilfskraft“) –
+        # deshalb zusätzlich alle Stellen der Kategorie ohne Suchwort; der Titel-Filter sortiert danach aus.
+        specs += [(base, POOL_PAGES), ({**base, "was": f["word"]}, POOL_PAGES),
+                  ({**without_type, "was": f["word"]}, POOL_PAGES)]
     elif not p["queries"]:
         specs.append((base, POOL_PAGES))
 
@@ -336,6 +342,8 @@ def search(what: str, where: str, radius: int = 25, employment_type: str = "Voll
     for j in jobs.values():
         if f.get("title") and not re.search(f["title"], j["title"], re.I):
             continue                                   # z. B. Trainee-Stelle bei der Suche nach Werkstudent
+        if f.get("not_title") and re.search(f["not_title"], j["title"], re.I)                 and not re.search(r"werkstud", j["title"], re.I):
+            continue
         j["relevance"] = relevance(j, p)
         if j["relevance"]:
             out.append(j)
