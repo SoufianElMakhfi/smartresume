@@ -22,7 +22,7 @@ config.load_env()  # KI-Keys usw. aus .env neben dem Programm
 from smartresume.branding import load_branding  # noqa: E402
 
 BR = load_branding()
-st.set_page_config(page_title=BR["app_name"], page_icon=BR["page_icon"], layout="centered")
+st.set_page_config(page_title=BR["app_name"], page_icon=BR["page_icon"] or None, layout="centered")
 st.markdown("""<style>
   [data-testid="stDecoration"], footer, #MainMenu { display: none !important; }
   h1 a, h2 a, h3 a { display: none !important; }
@@ -179,10 +179,10 @@ def _email_step(setup: bool) -> None:
 def _code_step(email: str) -> None:
     if st.session_state.get("login_sent"):
         st.success(f"Wir haben dir einen 6-stelligen Code an **{email}** geschickt. "
-                   "Gib ihn hier ein oder klicke auf den Link in der Mail.", icon="📬")
+                   "Gib ihn hier ein oder klicke auf den Link in der Mail.", icon=":material/mark_email_read:")
     elif st.session_state.get("login_dev_code"):
         st.info(f"Lokaler Modus (kein E-Mail-Versand eingerichtet) – dein Code für **{email}**: "
-                f"`{st.session_state.login_dev_code}`", icon="🔑")
+                f"`{st.session_state.login_dev_code}`", icon=":material/key:")
     else:
         st.warning("E-Mail-Versand ist nicht eingerichtet – der Code steht in der Server-Konsole.")
     with st.form("form_code"):
@@ -199,7 +199,7 @@ def _code_step(email: str) -> None:
     if c1.button("Neuen Code senden", use_container_width=True):
         try:
             _send_code(email)
-            st.toast("Neuer Code ist unterwegs.", icon="📬")
+            st.toast("Neuer Code ist unterwegs.", icon=":material/mark_email_read:")
         except auth.AuthError as e:
             st.error(str(e))
     if c2.button("Andere E-Mail", use_container_width=True):
@@ -236,11 +236,14 @@ def _main() -> None:
                                 tracking_page)
 
     user = st.session_state.user
-    pages = {"generate": "✨ Neue Bewerbung", "jobs": "🔎 Jobs finden", "profile": "👤 Mein Profil", "tracking": "📋 Meine Bewerbungen",
-             "settings": "⚙️ Einstellungen"}
+    pages = {"generate": ("Neue Bewerbung", ":material/edit_document:"),
+             "jobs": ("Jobs finden", ":material/travel_explore:"),
+             "profile": ("Mein Profil", ":material/person:"),
+             "tracking": ("Meine Bewerbungen", ":material/folder_open:"),
+             "settings": ("Einstellungen", ":material/settings:")}
     if user["is_admin"]:
-        pages["setup"] = "🔑 KI einrichten"
-        pages["admin"] = "🛡 Verwaltung"
+        pages["setup"] = ("KI einrichten", ":material/key:")
+        pages["admin"] = ("Verwaltung", ":material/admin_panel_settings:")
     st.session_state.setdefault("page", "generate")
     if st.session_state.page not in pages:
         st.session_state.page = "generate"
@@ -248,13 +251,13 @@ def _main() -> None:
     with st.sidebar:
         _logo()
         st.caption(f"Angemeldet als **{user['email']}**")
-        for key, label in pages.items():
-            if st.button(label, key=f"nav_{key}", use_container_width=True,
+        for key, (label, icon) in pages.items():
+            if st.button(label, key=f"nav_{key}", use_container_width=True, icon=icon,
                          type="primary" if st.session_state.page == key else "secondary"):
                 st.session_state.page = key
                 st.rerun()
         st.divider()
-        if st.button("Abmelden", use_container_width=True):
+        if st.button("Abmelden", use_container_width=True, icon=":material/logout:"):
             auth.end_session(st.session_state.get("session_token", ""))
             st.session_state.clear()
             st.session_state.clear_cookie = True

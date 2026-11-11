@@ -42,7 +42,7 @@ Die erste E-Mail-Adresse, die sich anmeldet, wird **Admin** und landet direkt be
    Modell überlastet, springt die App automatisch zum nächsten.
 2. **Abo-Modus**, wenn kein Key eingerichtet ist, alle Kontingente leer sind oder das Tageslimit erreicht
    ist: Die App baut den kompletten Auftrag (Regeln + Profil + Stellenanzeige), der Nutzer klickt
-   **„Kopieren & Gemini öffnen“** (oder ChatGPT), fügt die Antwort wieder ein – fertig. Die Antwort wird
+   **„Kopieren und Gemini öffnen“** (oder ChatGPT), fügt die Antwort wieder ein – fertig. Die Antwort wird
    genauso geprüft wie eine API-Antwort; ist sie unvollständig, zeigt die App einen Korrektursatz für
    denselben Chat. Gilt für Bewerbung, Lebenslauf-Import und Regel-Korrekturen.
 

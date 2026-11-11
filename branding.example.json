@@ -1,7 +1,7 @@
 {
   "app_name": "JobBoost",
   "tagline": "Bewerbungen, die passen – ehrlich und überzeugend.",
-  "page_icon": "🚀",
+  "page_icon": ":material/work:",
   "logo": "assets/logo.png",
   "accent_color": "#1F3A5F",
   "pdf_font": "Lexend",

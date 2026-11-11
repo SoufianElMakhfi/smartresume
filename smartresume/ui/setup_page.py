@@ -28,9 +28,9 @@ def _provider(p: dict) -> str | None:
     env = p["env"]
     with st.container(border=True):
         c1, c2 = st.columns([3, 1])
-        status = "✅ eingerichtet" if config.is_set(env) else "– noch kein Key"
-        c1.markdown(f"**{p['name']}** {'· kostenlos' if p['free'] else ''}  \n:gray[{status}]")
-        c2.link_button("Key holen ↗", p["url"], use_container_width=True)
+        status = ":green[:material/check_circle: eingerichtet]" if config.is_set(env) else ":gray[noch kein Key]"
+        c1.markdown(f"**{p['name']}** {'· kostenlos' if p['free'] else ''}  \n{status}")
+        c2.link_button("Key holen", p["url"], use_container_width=True, icon=":material/open_in_new:")
         st.caption(p["how"])
         if config.set_externally(env):
             st.caption("Dieser Key ist auf dem Server fest hinterlegt und kann hier nicht geändert werden.")
@@ -62,15 +62,16 @@ def render() -> None:
                 entered[p["env"]] = v
 
     c1, c2 = st.columns(2)
-    if c1.button("💾 Speichern", type="primary", use_container_width=True, disabled=not entered):
+    if c1.button("Speichern", type="primary", use_container_width=True, disabled=not entered,
+                 icon=":material/save:"):
         config.save_values(entered)
         for env in entered:
             st.session_state.pop(f"setup_{env}", None)
-        st.toast("Gespeichert – die KI ist sofort einsatzbereit.", icon="✅")
+        st.toast("Gespeichert – die KI ist sofort einsatzbereit.", icon=":material/check:")
         st.rerun()
     removable = [p for p in config.PROVIDERS if config.is_set(p["env"]) and not config.set_externally(p["env"])]
     if removable:
-        with c2.popover("🗑 Key entfernen", use_container_width=True):
+        with c2.popover("Key entfernen", use_container_width=True, icon=":material/delete:"):
             for p in removable:
                 if st.button(p["name"], key=f"rm_{p['env']}", use_container_width=True):
                     config.save_values({p["env"]: ""})

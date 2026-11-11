@@ -70,14 +70,17 @@ def _manual(profile: dict) -> None:
         st.session_state.jobs_manual = False
         return
     with st.container(border=True):
-        st.markdown(f"**KI-Bewertung über Gemini/ChatGPT** ({len(todo)} Stellen)")
+        st.markdown(f"#### Passung mit Gemini oder ChatGPT prüfen ({len(todo)} Stellen)")
+        st.caption("Gemini oder ChatGPT vergleicht jede Anzeige mit deinem Profil und vergibt 0–100 %. "
+                   "SmartResume zeigt die Bewertung danach an den Stellen an.")
         system, user = jobsearch.rating_prompts(profile, todo, st.session_state.jobs_texts)
-        data = chat_bridge(bridge.chat_prompt(system, user), "jobs", validate=jobsearch.validate_ratings(len(todo)))
+        data = chat_bridge(bridge.chat_prompt(system, user), "jobs", validate=jobsearch.validate_ratings(len(todo)),
+                           submit="Antwort übernehmen und Stellen bewerten")
         if data:
             st.session_state.jobs_ratings.update(jobsearch.apply_ratings(data, todo))
             st.session_state.jobs_manual = False
             st.rerun()
-        if st.button("Abbrechen", key="jobs_manual_cancel"):
+        if st.button("Abbrechen", key="jobs_manual_cancel", icon=":material/close:"):
             st.session_state.jobs_manual = False
             st.rerun()
 
@@ -104,20 +107,21 @@ def _card(job: dict, hits: list[str], rating: dict | None, applied: bool) -> Non
         c1.markdown(f"**{job['title']}**  \n{job['company']} · {where}")
         facts = []
         if job["salary"]:
-            facts.append(f"💶 {job['salary']}")
+            facts.append(f":material/payments: {job['salary']}")
         if job["homeoffice"]:
-            facts.append("🏠 Homeoffice möglich")
+            facts.append(":material/home_work: Homeoffice möglich")
         if job["published"]:
             d = job["published"][:10].split("-")
-            facts.append(f"📅 seit {d[2]}.{d[1]}." if len(d) == 3 else f"📅 {job['published']}")
+            facts.append(f":material/calendar_today: seit {d[2]}.{d[1]}." if len(d) == 3
+                         else f":material/calendar_today: {job['published']}")
         if applied:
-            facts.append("✅ schon beworben")
+            facts.append(":green[:material/task_alt:] schon beworben")
         if facts:
             c1.caption(" · ".join(facts))
         if rating:
             color = "green" if rating["score"] >= 75 else "orange" if rating["score"] >= 50 else "red"
             c2.markdown(f"### :{color}[{rating['score']} %]")
-            c1.markdown(f"🤖 {rating['reason']}")
+            c1.markdown(f":material/insights: {rating['reason']}")
             if rating["missing"]:
                 c1.caption("Fehlt: " + ", ".join(rating["missing"]))
         elif hits:
@@ -125,9 +129,10 @@ def _card(job: dict, hits: list[str], rating: dict | None, applied: bool) -> Non
         if hits:
             c1.caption("Passt zu deinem Profil: " + ", ".join(hits[:8]))
         b1, b2 = st.columns(2)
-        if b1.button("✨ Bewerbung erstellen", key=f"apply_{job['ref']}", type="primary", use_container_width=True):
+        if b1.button("Bewerbung erstellen", key=f"apply_{job['ref']}", type="primary", use_container_width=True,
+                     icon=":material/edit_document:"):
             _apply(job)
-        b2.link_button("Anzeige öffnen ↗", job["url"], use_container_width=True)
+        b2.link_button("Anzeige öffnen", job["url"], use_container_width=True, icon=":material/open_in_new:")
         text = st.session_state.jobs_texts.get(job["ref"])
         if text:
             with st.expander("Anzeigentext lesen"):
@@ -158,7 +163,7 @@ def render() -> None:
         ages = list(jobsearch.MAX_AGE)
         age = saved.get("age", "Letzte 30 Tage")
         age = c5.selectbox("Veröffentlicht", ages, index=ages.index(age) if age in ages else 3)
-        submitted = st.form_submit_button("🔎 Suchen", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Suchen", type="primary", use_container_width=True, icon=":material/search:")
 
     if submitted:
         settings["job_search"] = {"what": what, "where": where, "employment_type": etype, "radius": radius, "age": age}
@@ -175,7 +180,7 @@ def render() -> None:
     jobs = st.session_state.get("jobs")
     if jobs is None:
         st.info("Tipp: Suchbegriff kurz halten (z. B. „Informationssicherheit“ statt eines ganzen Stellentitels) – "
-                "die Jobbörse sucht nach allen Wörtern gleichzeitig.", icon="💡")
+                "die Jobbörse sucht nach allen Wörtern gleichzeitig.", icon=":material/lightbulb:")
         return
     if not jobs:
         st.warning("Keine Stellen gefunden. Versuche einen kürzeren oder allgemeineren Suchbegriff, einen größeren "
@@ -191,7 +196,8 @@ def render() -> None:
     c1.markdown(f"**{st.session_state.jobs_total} Stellen gefunden**, {len(jobs)} geladen")
     unrated = sum(1 for j in jobs if j["ref"] not in ratings)
     if unrated and not st.session_state.get("jobs_manual"):
-        if c2.button(f"🤖 KI-Passung prüfen ({min(unrated, 25)} Stellen)", use_container_width=True,
+        if c2.button(f"KI-Passung prüfen ({min(unrated, 25)} Stellen)", use_container_width=True,
+                     icon=":material/insights:",
                      help="Die KI vergleicht jede Anzeige mit deinem Profil und vergibt 0–100 %. "
                           "Ein Aufruf für alle Stellen (ca. 5.000–12.000 Tokens)."):
             _rate(profile)

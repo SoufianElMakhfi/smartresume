@@ -12,7 +12,7 @@ from .common import branding, uid
 
 def render() -> None:
     st.title("Verwaltung")
-    tab_users, tab_usage, tab_brand = st.tabs(["👥 Nutzer", "📊 Verbrauch", "🎨 Branding"])
+    tab_users, tab_usage, tab_brand = st.tabs([":material/group: Nutzer", ":material/bar_chart: Verbrauch", ":material/palette: Branding"])
 
     with tab_users:
         users = db.list_users()
@@ -47,7 +47,7 @@ def render() -> None:
                     st.rerun()
                 except db.UserError as e:
                     st.error(str(e))
-            if st.button("🗑 Nutzer löschen (inkl. aller Daten)", use_container_width=True):
+            if st.button("Nutzer löschen (inkl. aller Daten)", use_container_width=True, icon=":material/delete:"):
                 st.session_state.confirm_user_del = sel["id"]
             if st.session_state.get("confirm_user_del") == sel["id"]:
                 st.warning(f"{sel['email']} und alle Profile/Bewerbungen endgültig löschen?")

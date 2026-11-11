@@ -55,16 +55,18 @@ def _input() -> None:
     if missing:
         st.warning("Dein Profil ist noch unvollständig (" + ", ".join(missing) + "). "
                    "Lade zuerst deinen Lebenslauf hoch oder trage deine Daten ein.")
-        if st.button("Zum Profil →", type="primary"):
+        if st.button("Zum Profil", type="primary", icon=":material/arrow_forward:"):
             go("profile")
         return
 
     picked = model_picker()
     if picked is None:
-        st.info("Keine KI-API eingerichtet – kein Problem: Du erstellst die Bewerbung kostenlos mit deinem "
-                "eigenen **Gemini**- oder **ChatGPT**-Konto (Kopieren & Einfügen, dauert ca. 30 Sekunden länger).",
-                icon="💬")
-        if st.session_state.user.get("is_admin") and st.button("🔑 Kostenlosen KI-Key einrichten (2 Minuten)"):
+        st.info("**Es ist noch keine KI verbunden.** Du erstellst die Bewerbung trotzdem kostenlos – mit deinem "
+                "eigenen **Gemini**- oder **ChatGPT**-Konto: SmartResume erstellt einen fertigen Auftrag, du fügst "
+                "ihn dort ein und kopierst die Antwort zurück. Daraus entsteht hier das fertige PDF.",
+                icon=":material/info:")
+        if st.session_state.user.get("is_admin") and st.button("Stattdessen KI verbinden – kostenlos, 2 Minuten",
+                                                               icon=":material/key:"):
             go("setup")
     prefs = db.get_user_settings(uid()).get("gen_prefs") or {}
     # Zuletzt gewählte Beschäftigungsart merken; ohne Vorgabe: Werkstudent, wenn ein Studium im Profil steht.
@@ -72,10 +74,10 @@ def _input() -> None:
     st.session_state.setdefault("gen_etype", default_employment_type(profile, prefs))
     etype = st.segmented_control("Beschäftigungsart", EMPLOYMENT_TYPES, key="gen_etype") or "Vollzeit"
     if etype == "Werkstudent" and not profile["preferences"]["student_status"]:
-        st.caption("💡 Tipp: Trage im Profil unter *Rahmen & Stil* dein Studium ein – das ist bei "
+        st.caption(":material/lightbulb: Tipp: Trage im Profil unter *Wünsche & Stil* dein Studium ein – das ist bei "
                    "Werkstudentenstellen das wichtigste Argument.")
     if etype in ("Teilzeit", "Werkstudent", "Minijob") and not profile["preferences"]["hours_per_week"]:
-        st.caption("💡 Tipp: Gewünschte Wochenstunden im Profil eintragen, dann können sie genannt werden.")
+        st.caption(":material/lightbulb: Tipp: Gewünschte Wochenstunden im Profil eintragen, dann können sie genannt werden.")
 
     job_url = st.text_input("Link zur Stellenanzeige", placeholder="https://www.stepstone.de/…", key="gen_url")
     job_text = st.text_area("… oder Anzeigentext einfügen", height=200, key="gen_text",
@@ -103,7 +105,7 @@ def _input() -> None:
                              help="Bei harten Fehlern (erfundene Zahlen, Platzhalter …) überarbeitet die KI "
                                   "das Anschreiben einmal gezielt. Kostet nur dann zusätzliche Tokens.")
 
-    if not st.button("✨ Bewerbung erstellen", type="primary", use_container_width=True):
+    if not st.button("Bewerbung erstellen", type="primary", use_container_width=True, icon=":material/edit_document:"):
         return
     settings = db.get_user_settings(uid())
     settings["gen_prefs"] = {"employment_type": etype, "bullets": bullets, "auto_fix": auto_fix}
@@ -129,7 +131,7 @@ def _input() -> None:
         added = add_skills(profile, generate._parse_extra_skills(extra))   # nur neue, keine Doppelten
         db.save_profile(uid(), data=profile)
         if added:
-            st.toast("Ins Profil übernommen: " + ", ".join(added), icon="✅")
+            st.toast("Ins Profil übernommen: " + ", ".join(added), icon=":material/check:")
         profile = db.get_profile(uid())["data"]
         st.session_state.pop("draft_uid", None)  # Profilentwurf neu laden
 
@@ -175,14 +177,16 @@ def _to_manual(job: dict, reason: str) -> None:
 def _manual() -> None:
     m = st.session_state.gen_manual
     profile = db.get_profile(uid())["data"]
-    st.title("Mit Gemini oder ChatGPT erstellen")
+    st.title("Bewerbung mit Gemini oder ChatGPT schreiben")
     if m.get("reason"):
-        st.info(m["reason"], icon="🔄")
-    st.caption("Funktioniert mit jedem Gemini- oder ChatGPT-Konto, auch kostenlos. Der Auftrag enthält alle Regeln; "
-               "die Antwort prüft die App danach genauso streng wie sonst.")
+        st.info(m["reason"], icon=":material/sync:")
+    st.caption("Gemini oder ChatGPT schreibt die Texte (Anschreiben, Kurzprofil, Stichpunkte für den Lebenslauf). "
+               "SmartResume prüft sie genauso streng wie sonst, setzt Firmen, Zeiträume und Ausbildung aus deinem "
+               "Profil ein und erstellt daraus das PDF. Funktioniert mit jedem Konto, auch kostenlos.")
     system, user = generate.build_prompts(profile, m["job_text"], m["employment_type"], m["extra_info"],
                                           m["focus"], m["bullets"])
-    data = chat_bridge(bridge.chat_prompt(system, user), "gen", validate=generate.validate_ai)
+    data = chat_bridge(bridge.chat_prompt(system, user), "gen", validate=generate.validate_ai,
+                       submit="Antwort übernehmen und Entwurf prüfen")
     if data is not None:
         res = generate.finish(data, profile, m["job_text"], m["employment_type"], m["extra_info"], m["bullets"])
         reset()
@@ -194,7 +198,7 @@ def _manual() -> None:
         }
         st.session_state.gen_step = "review"
         st.rerun()
-    if st.button("✖ Abbrechen", use_container_width=True):
+    if st.button("Abbrechen", use_container_width=True, icon=":material/close:"):
         reset()
         st.rerun()
 
@@ -204,7 +208,8 @@ def _refine_box(label: str, key: str, getter, setter, picked) -> None:
     c1, c2 = st.columns([4, 1])
     ins = c1.text_input(f"Anweisung für {label}", key=f"ins_{key}", label_visibility="collapsed",
                         placeholder="KI-Anweisung, z.B. 'kürzer', 'konkreter', 'selbstbewusster'")
-    if c2.button("✨ Optimieren", key=f"btn_{key}", use_container_width=True, disabled=not picked):
+    if c2.button("Optimieren", key=f"btn_{key}", use_container_width=True, disabled=not picked,
+                  icon=":material/auto_awesome:"):
         if not ins.strip():
             st.toast("Bitte zuerst eine Anweisung eingeben.")
             return
@@ -234,7 +239,7 @@ def _review() -> None:
     st.caption(" · ".join(meta))
     picked = model_picker("review_model", "Modell für Optimierungen")
     if picked is None:
-        st.caption("💡 Ohne KI-API bearbeitest du die Texte direkt hier; Regelverstöße lassen sich unten "
+        st.caption(":material/info: Ohne verbundene KI bearbeitest du die Texte direkt hier; Regelverstöße lassen sich unten "
                    "per Gemini/ChatGPT beheben.")
     rev = st.session_state.setdefault("review_rev", 0)
 
@@ -294,22 +299,22 @@ def _review() -> None:
                                          generate.MAX_BULLET_CHARS)
     show_findings(findings)
     if g.get("repaired"):
-        st.caption("🛠 Das Anschreiben wurde nach der Erstellung einmal automatisch korrigiert.")
+        st.caption(":material/build: Das Anschreiben wurde nach der Erstellung einmal automatisch korrigiert.")
     for line in g.get("log", []):
         st.caption(line)
     _ats_panel(s)
     if s.get("gaps"):
         st.info("**Anforderungen, die dein Profil nicht belegt** – werden im Anschreiben nicht behauptet:\n\n"
-                + "\n".join(f"- {x}" for x in s["gaps"]), icon="🧭")
+                + "\n".join(f"- {x}" for x in s["gaps"]), icon=":material/rule:")
     fc = st.session_state.get("gen_factcheck")
     if fc is not None:
         if fc:
             st.warning("**KI-Faktencheck – nicht durch dein Profil belegt:**\n\n" +
-                       "\n".join(f"- „{i['claim']}“ – {i.get('reason', '')}" for i in fc), icon="🔎")
+                       "\n".join(f"- „{i['claim']}“ – {i.get('reason', '')}" for i in fc), icon=":material/fact_check:")
         else:
-            st.success("KI-Faktencheck: alle Aussagen sind durch dein Profil gedeckt.", icon="🔎")
+            st.success("KI-Faktencheck: alle Aussagen sind durch dein Profil gedeckt.", icon=":material/fact_check:")
     c1, c2 = st.columns(2)
-    if c1.button("🔎 KI-Faktencheck", use_container_width=True, disabled=not picked,
+    if c1.button("KI-Faktencheck", use_container_width=True, disabled=not picked, icon=":material/fact_check:",
                  help="Ein Modell vergleicht Anschreiben und Kurzprofil Satz für Satz mit deinem Profil "
                       "(ca. 2.000 Tokens)."):
         cfg, api_key = picked
@@ -325,7 +330,7 @@ def _review() -> None:
     problems = quality.blocking_problems(findings) + [
         f"Nicht belegt: „{i['claim']}“ ({i.get('reason', '')}) – entfernen oder durch Belegtes ersetzen"
         for i in (fc or [])]
-    if c2.button("🛠 Probleme automatisch beheben", use_container_width=True,
+    if c2.button("Probleme automatisch beheben", use_container_width=True, icon=":material/auto_fix_high:",
                  disabled=not (picked and problems)):
         cfg, api_key = picked
         try:
@@ -341,7 +346,7 @@ def _review() -> None:
             st.error(f"{e} – du kannst die Probleme unten per Gemini/ChatGPT beheben.")
             st.session_state.repair_manual = True
     if problems and (picked is None or st.session_state.get("repair_manual")):
-        with st.expander("🛠 Probleme mit Gemini/ChatGPT beheben", expanded=picked is None):
+        with st.expander("Probleme mit Gemini/ChatGPT beheben", expanded=picked is None, icon=":material/auto_fix_high:"):
             system, user = generate.repair_prompts(s, problems, profile)
             data = chat_bridge(bridge.chat_prompt(system, user), "repair", validate=generate.validate_repair)
             if data is not None:
@@ -359,7 +364,7 @@ def _review() -> None:
     g["show_links"] = c2.toggle("Links anzeigen", value=g.get("show_links", True),
                                 disabled=not profile["personal"]["links"], key=k("links"))
     c1, c2 = st.columns(2)
-    if c1.button("📄 PDF erstellen", type="primary", use_container_width=True):
+    if c1.button("PDF erstellen", type="primary", use_container_width=True, icon=":material/picture_as_pdf:"):
         try:
             with st.spinner("PDF wird erstellt …"):
                 st.session_state.gen_pdf = _render(s, prof, g)
@@ -367,7 +372,7 @@ def _review() -> None:
             st.rerun()
         except render.RenderError as e:
             st.error(str(e))
-    if c2.button("✖ Verwerfen & neu starten", use_container_width=True):
+    if c2.button("Verwerfen & neu starten", use_container_width=True, icon=":material/restart_alt:"):
         reset()
         st.rerun()
 
@@ -393,7 +398,12 @@ def _file_name(profile: dict, company: str, kind: str = "Bewerbung") -> str:
     return f"{kind}_{name}_{_slug(company) or 'Unternehmen'}.pdf"
 
 
-FORMATS = ["📁 Eine Bewerbungsmappe (1 PDF)", "📄 Getrennt: Anschreiben + Lebenslauf"]
+FORMATS = ["Eine Bewerbungsmappe (1 PDF)", "Getrennt: Anschreiben + Lebenslauf"]
+
+
+def _saved_format(value: str | None) -> str:
+    """Gespeicherte Formatwahl – auch ältere Werte (mit Emoji davor) werden erkannt."""
+    return FORMATS[1] if "Getrennt" in (value or "") else FORMATS[0]
 
 
 def _autosave(g: dict, s: dict, pdf: bytes) -> int:
@@ -436,25 +446,24 @@ def _done() -> None:
     app_id = _autosave(g, s, pdf)
     app = next((a for a in db.list_applications(uid()) if a["id"] == app_id), {})
 
-    st.title("Fertig! 🎉")
-    st.caption("💾 Automatisch gespeichert unter „📋 Meine Bewerbungen“ – mit Stellenanzeige und PDF.")
+    st.title("Fertig")
+    st.caption(":material/cloud_done: Automatisch gespeichert unter „Meine Bewerbungen“ – mit Stellenanzeige und PDF.")
     pages = render.count_pages(pdf)
     if pages != 3:
         st.warning(f"Das PDF hat {pages} statt 3 Seiten – vermutlich ist das Anschreiben oder der Lebenslauf "
                    "zu lang. Unter 'Bearbeiten' kürzen.")
     c1, c2 = st.columns(2)
-    if c1.button("✏️ Bearbeiten", use_container_width=True):
+    if c1.button("Bearbeiten", use_container_width=True, icon=":material/edit:"):
         st.session_state.gen_step = "review"
         st.rerun()
-    if c2.button("➕ Neue Bewerbung", use_container_width=True):
+    if c2.button("Neue Bewerbung", use_container_width=True, icon=":material/add:"):
         reset()
         st.rerun()
 
     # Format: wie verlangt das Unternehmen die Unterlagen? (gilt für Download UND E-Mail-Anhang)
     st.divider()
     settings = db.get_user_settings(uid())
-    st.session_state.setdefault("gen_format", settings.get("pdf_format") if settings.get("pdf_format") in FORMATS
-                                else FORMATS[0])
+    st.session_state.setdefault("gen_format", _saved_format(settings.get("pdf_format")))
     fmt = st.segmented_control("Wie möchte das Unternehmen die Unterlagen?", FORMATS, key="gen_format") or FORMATS[0]
     if fmt != settings.get("pdf_format"):
         settings["pdf_format"] = fmt
@@ -470,34 +479,34 @@ def _done() -> None:
 
     # Herunterladen (rot) + Status – ganz unten
     st.divider()
-    st.subheader("⬇ Herunterladen")
+    st.subheader("Herunterladen")
     cols = st.columns(len(docs))
     for col, (data, name) in zip(cols, docs):
         if name.startswith("Anschreiben"):
-            label = "⬇ Anschreiben"
+            label = "Anschreiben"
         elif name.startswith("Lebenslauf"):
-            label = "⬇ Lebenslauf"
+            label = "Lebenslauf"
         else:
-            label = "⬇ Bewerbungsmappe (PDF)"
+            label = "Bewerbungsmappe (PDF)"
         col.download_button(label, data, file_name=name, mime="application/pdf", type="primary",
-                            use_container_width=True, key=f"dl_{name}")
+                            use_container_width=True, key=f"dl_{name}", icon=":material/download:")
     if app.get("status") == "Erstellt":
-        if st.button("✅ Als beworben markieren", use_container_width=True,
+        if st.button("Als beworben markieren", use_container_width=True, icon=":material/task_alt:",
                      help="Setzt nur den Status in „Meine Bewerbungen“ – gespeichert ist schon alles."):
             db.mark_applied(uid(), app_id)
             st.rerun()
     elif app:
         st.success(f"Status: **{app['status']}** (seit {app['applied_at']}) – ändern unter „Meine Bewerbungen“.",
-                   icon="✅")
+                   icon=":material/task_alt:")
 
 
 def _send_section(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -> None:
     """Bewerbung versenden: Empfänger aus der Anzeige, dann direkt per SMTP oder als Gmail-Entwurf."""
-    st.subheader("📨 Bewerbung versenden")
+    st.subheader("Bewerbung versenden")
     cl = s["cover_letter"]
     sent_to = st.session_state.get("gen_sent")
     if sent_to:
-        st.success(f"Gesendet an **{sent_to}** – steht in „Meine Bewerbungen“.", icon="✅")
+        st.success(f"Gesendet an **{sent_to}** – steht in „Meine Bewerbungen“.", icon=":material/mark_email_read:")
         return
     found = mailer.find_emails(g.get("job_text", ""))
     if found:
@@ -505,10 +514,11 @@ def _send_section(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -
                    (f" (weitere: {', '.join(found[1:3])})" if len(found) > 1 else "") + " – bitte kurz prüfen.")
     else:
         st.info("In der Anzeige steht **keine E-Mail-Adresse**. Dann bewirbt man sich meist über das "
-                "Bewerbungsformular der Firma: Anzeige öffnen → „Jetzt bewerben“ → PDF hochladen. "
-                "Steht irgendwo doch eine Adresse (z. B. auf der Karriereseite), trag sie hier ein.", icon="ℹ️")
+                "Bewerbungsformular der Firma: Anzeige öffnen, „Jetzt bewerben“ wählen, PDF hochladen. "
+                "Steht irgendwo doch eine Adresse (z. B. auf der Karriereseite), trag sie hier ein.", icon=":material/info:")
         if g.get("job_url"):
-            st.link_button("Anzeige / Bewerbungsportal öffnen ↗", g["job_url"], use_container_width=True)
+            st.link_button("Anzeige / Bewerbungsportal öffnen", g["job_url"], use_container_width=True,
+                           icon=":material/open_in_new:")
     st.session_state.setdefault("gen_mail_to", found[0] if found else "")
     st.session_state.setdefault("gen_mail_subject", mailer.default_subject(s))
     st.session_state.setdefault("gen_mail_body", mailer.default_body(s, prof["data"]))
@@ -522,7 +532,7 @@ def _send_section(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -
     if mailer.account_ready(acc):
         copy = st.checkbox("Kopie an mich", value=not mailer.PROVIDERS.get(acc.get("provider"), {}).get("saves_sent"),
                            key="gen_mail_copy", help="Gmail legt gesendete Mails ohnehin unter „Gesendet“ ab.")
-        if st.button(f"📨 Jetzt von {acc['address']} senden", type="primary", use_container_width=True,
+        if st.button(f"Jetzt von {acc['address']} senden", type="primary", use_container_width=True, icon=":material/send:",
                      disabled=not ok_to):
             try:
                 msg = mailer.build_message(acc, prof["data"]["personal"].get("name", ""), to, subject, body, docs,
@@ -540,13 +550,13 @@ def _send_section(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -
             st.rerun()
     else:
         c1, c2 = st.columns(2)
-        c1.link_button("📧 Als Gmail-Entwurf öffnen ↗", mailer.gmail_compose_url(to, subject, body),
-                       use_container_width=True, disabled=not ok_to)
-        c2.link_button("✉️ Im Mailprogramm öffnen ↗", mailer.mailto_url(to, subject, body),
-                       use_container_width=True, disabled=not ok_to)
+        c1.link_button("Als Gmail-Entwurf öffnen", mailer.gmail_compose_url(to, subject, body),
+                       use_container_width=True, disabled=not ok_to, icon=":material/drafts:")
+        c2.link_button("Im Mailprogramm öffnen", mailer.mailto_url(to, subject, body),
+                       use_container_width=True, disabled=not ok_to, icon=":material/mail:")
         st.caption("Die Datei" + ("en" if len(docs) > 1 else "") + " unten herunterladen und im Entwurf "
                    "anhängen (Büroklammer oder per Drag & Drop).")
-        if st.button("Direkt aus SmartResume senden – E-Mail-Konto einrichten (2 Minuten)"):
+        if st.button("Direkt aus SmartResume senden – E-Mail-Konto einrichten (2 Minuten)", icon=":material/settings:"):
             go("settings")
             st.rerun()
 
@@ -566,31 +576,32 @@ def _ats_panel(s: dict) -> None:
     if not rep:
         return
     score, best = ats.score(rep), ats.best_possible(rep)
-    icon = "🟢" if score >= 75 else "🟡" if score >= 50 else "🔴"
+    color = "green" if score >= 75 else "orange" if score >= 50 else "red"
     fixable = [r for r in rep if r["status"] in ("addable", "wording")]
-    with st.expander(f"{icon} ATS-Check: {score} % der Schlüsselbegriffe der Anzeige abgedeckt"
-                     + (f" – ehrlich möglich: {best} %" if best > score else ""), expanded=bool(fixable)):
+    with st.expander(f"ATS-Check: :{color}[**{score} %**] der Schlüsselbegriffe der Anzeige abgedeckt"
+                     + (f" – ehrlich möglich: {best} %" if best > score else ""), expanded=bool(fixable),
+                     icon=":material/manage_search:"):
         st.caption("Viele Firmen lassen Bewerbungen zuerst von Software (z. B. Personio, SAP SuccessFactors, "
                    "Workday) nach den Begriffen der Anzeige durchsuchen – oft wörtlich. Hier siehst du, welche "
                    "davon in deinen Unterlagen stehen. Ergänzt wird nur, was laut deinem Profil stimmt.")
         for i, r in enumerate(rep):
             t, p = r["term"], r["profile"]
             if r["status"] == "ok":
-                st.markdown(f"✅ **{t}**")
+                st.markdown(f":green[:material/check_circle:] **{t}**")
             elif r["status"] == "bridge":
-                st.markdown(f"🔹 **{t}** – im Anschreiben ehrlich als Lücke angesprochen (die Software findet den "
+                st.markdown(f":blue[:material/info:] **{t}** – im Anschreiben ehrlich als Lücke angesprochen (die Software findet den "
                             "Begriff trotzdem).")
             elif r["status"] == "wording":
                 c1, c2 = st.columns([3, 2])
-                c1.markdown(f"🔤 **{t}** – steht als „{p}“ drin. Die Software sucht evtl. genau „{t}“.")
+                c1.markdown(f":orange[:material/spellcheck:] **{t}** – steht als „{p}“ drin. Die Software sucht evtl. genau „{t}“.")
                 c2.button(f"„{t}“ verwenden", key=f"ats_w{i}", on_click=_ats_fix, args=("wording", t, p),
                           use_container_width=True)
             elif r["status"] == "addable":
                 c1, c2 = st.columns([3, 2])
-                c1.markdown(f"➕ **{t}** – hast du laut Profil" + (f" („{p}“)" if p.lower() != t.lower() else "")
+                c1.markdown(f":orange[:material/add_circle:] **{t}** – hast du laut Profil" + (f" („{p}“)" if p.lower() != t.lower() else "")
                             + ", steht aber nicht in den Unterlagen.")
                 c2.button("In Kenntnisse aufnehmen", key=f"ats_a{i}", on_click=_ats_fix, args=("add", t),
                           use_container_width=True)
             else:
-                st.markdown(f"⬜ **{t}** – nicht in deinem Profil. Kannst du es doch? Dann im Profil ergänzen "
+                st.markdown(f":gray[:material/radio_button_unchecked:] **{t}** – nicht in deinem Profil. Kannst du es doch? Dann im Profil ergänzen "
                             "und die Bewerbung neu erstellen.")

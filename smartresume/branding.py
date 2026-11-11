@@ -17,7 +17,7 @@ from . import paths
 DEFAULT_BRANDING = {
     "app_name": "SmartResume",
     "tagline": "Maßgeschneiderte Bewerbungen in Minuten – ehrlich und überzeugend.",
-    "page_icon": "📄",
+    "page_icon": ":material/description:",
     "logo": "",                    # Pfad zu PNG/SVG relativ zum Projektordner
     "accent_color": "#0F5F6E",     # Standard-Akzentfarbe der PDFs (Nutzer kann überschreiben)
     "pdf_font": "Lexend",          # muss in fonts/ liegen

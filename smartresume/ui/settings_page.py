@@ -39,10 +39,10 @@ def render() -> None:
 
 
 def _mail_section(settings: dict) -> None:
-    st.subheader("📨 E-Mail-Versand")
+    st.subheader("E-Mail-Versand")
     acc = settings.get("mail") or {}
     if mailer.account_ready(acc):
-        st.success(f"Eingerichtet: Bewerbungen werden von **{acc['address']}** gesendet.", icon="✅")
+        st.success(f"Eingerichtet: Bewerbungen werden von **{acc['address']}** gesendet.", icon=":material/check_circle:")
     st.caption("Damit verschickst du Bewerbungen direkt aus SmartResume – über dein eigenes Postfach, inklusive "
                "PDF im Anhang. Ohne Einrichtung kannst du stattdessen einen fertigen Gmail-Entwurf öffnen.")
     with st.expander("E-Mail-Konto einrichten" if not mailer.account_ready(acc) else "E-Mail-Konto ändern",
@@ -53,7 +53,8 @@ def _mail_section(settings: dict) -> None:
         info = mailer.PROVIDERS[prov]
         st.markdown(info["how"])
         if info["help_url"]:
-            st.link_button("App-Passwort erstellen ↗" if prov == "Gmail" else f"{prov} öffnen ↗", info["help_url"])
+            st.link_button("App-Passwort erstellen" if prov == "Gmail" else f"{prov} öffnen", info["help_url"],
+                           icon=":material/open_in_new:")
         address = st.text_input("Deine E-Mail-Adresse", value=acc.get("address") or st.session_state.user["email"],
                                 key="mail_address",
                                 placeholder="vorname.nachname@gmail.com")
@@ -76,7 +77,7 @@ def _mail_section(settings: dict) -> None:
                 st.success("Verbindung klappt – es wurde nichts gesendet.")
             except mailer.MailError as e:
                 st.error(str(e))
-        if c2.button("💾 Speichern", type="primary", use_container_width=True,
+        if c2.button("Speichern", type="primary", use_container_width=True, icon=":material/save:",
                      disabled=not mailer.account_ready(new)):
             if not mailer.valid_email(new["address"]):
                 st.error("Bitte eine gültige E-Mail-Adresse angeben.")
@@ -84,7 +85,7 @@ def _mail_section(settings: dict) -> None:
                 settings["mail"] = new
                 db.save_user_settings(uid(), settings)
                 st.session_state.pop("mail_password", None)
-                st.toast("E-Mail-Konto gespeichert.", icon="✅")
+                st.toast("E-Mail-Konto gespeichert.", icon=":material/check:")
                 st.rerun()
         if acc and c3.button("Entfernen", use_container_width=True):
             settings.pop("mail", None)

@@ -184,10 +184,10 @@ def test_incomplete_profile_blocks_generation(env):
 def test_profile_page_edit_and_save(env):
     uid = _user_with_profile()
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    _btn(at, "👤 Mein Profil").click()
+    _btn(at, "Mein Profil").click()
     _run(at)
-    assert [t.label for t in at.tabs] == ["📥 Lebenslauf importieren", "👤 Persönlich", "💼 Werdegang", "🛠 Kenntnisse",
-                                          "🎯 Wünsche & Stil"]
+    assert [t.label.split(": ", 1)[-1] for t in at.tabs] == ["Lebenslauf importieren", "Persönlich", "Werdegang",
+                                                             "Kenntnisse", "Wünsche & Stil"]
     assert any("vollständig" in str(getattr(x, "value", "")) or "vollständig" in str(getattr(x, "text", ""))
                for x in at.get("progress"))
     name_input = next(t for t in at.text_input if t.label == "Vor- und Nachname *")
@@ -197,12 +197,12 @@ def test_profile_page_edit_and_save(env):
     assert db.get_profile(uid)["data"]["personal"]["name"] == "Max M."   # sofort gespeichert, ohne Knopf
     # bleibt nach neuem Login (neue Sitzung) erhalten
     at2 = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    _btn(at2, "👤 Mein Profil").click()
+    _btn(at2, "Mein Profil").click()
     _run(at2)
     assert next(t for t in at2.text_input if t.label == "Vor- und Nachname *").value == "Max M."
     # Station hinzufügen und wieder entfernen
     n = len(db.get_profile(uid)["data"]["experience"])
-    _btn(at, "＋ Station hinzufügen").click()
+    _btn(at, "Station hinzufügen").click()
     _run(at)
     assert len(at.session_state.draft["experience"]) == n + 1
     next(b for b in at.button if b.key and b.key.endswith("_experience0_del")).click()
@@ -213,7 +213,7 @@ def test_profile_page_edit_and_save(env):
 def test_profile_skills_as_chips_without_duplicates(env):
     uid = _user_with_profile()
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    _btn(at, "👤 Mein Profil").click()
+    _btn(at, "Mein Profil").click()
     _run(at)
     skills = db.get_profile(uid)["data"]["skills"]
     first, second = skills[0], skills[1]
@@ -227,7 +227,7 @@ def test_profile_skills_as_chips_without_duplicates(env):
     assert sum(i.lower() == first["items"][0].lower() for s in saved for i in s["items"]) == 1
     assert any("nicht doppelt" in i.value for i in at.info)
     # Sprache hinzufügen
-    _btn(at, "＋ Sprache").click()
+    _btn(at, "Sprache hinzufügen").click()
     _run(at)
     lang_inputs = [t for t in at.text_input if t.placeholder == "z. B. Englisch"]
     lang_inputs[-1].input("Spanisch")
@@ -244,7 +244,7 @@ def test_full_generation_flow(env):
     job.input("Frontend Developer (m/w/d) bei Lumora GmbH in Köln. Aufgaben: Vue.js, TypeScript, Performance. "
               "Bitte nenne deine Gehaltsvorstellung.")
     next(t for t in at.text_area if t.label.startswith("Zusätzliche Skills")).input("Figma")
-    _btn(at, "✨ Bewerbung erstellen").click()
+    _btn(at, "Bewerbung erstellen").click()
     _run(at)
     assert at.session_state.gen_step == "review", [e.value for e in at.error]
     g = at.session_state.gen
@@ -254,7 +254,7 @@ def test_full_generation_flow(env):
     assert any("Vue.js" in i.value for i in at.info)  # Lücke wird angezeigt
     assert db.user_token_total(uid) == 3800
 
-    _btn(at, "📄 PDF erstellen").click()
+    _btn(at, "PDF erstellen").click()
     _run(at)
     assert at.session_state.gen_step == "done"
     pdf = at.session_state.gen_pdf
@@ -265,29 +265,29 @@ def test_full_generation_flow(env):
     apps = db.list_applications(uid)
     assert len(apps) == 1 and apps[0]["company"] == "Lumora GmbH" and apps[0]["status"] == "Erstellt"
     assert "Vue.js" in db.get_application(uid, apps[0]["id"])["job_text"]
-    assert [d.label for d in at.get("download_button")] == ["⬇ Bewerbungsmappe (PDF)"]
+    assert [d.label for d in at.get("download_button")] == ["Bewerbungsmappe (PDF)"]
     # getrennt: Anschreiben + Lebenslauf (Wahl wird gemerkt)
-    at.segmented_control(key="gen_format").set_value("📄 Getrennt: Anschreiben + Lebenslauf")
+    at.segmented_control(key="gen_format").set_value("Getrennt: Anschreiben + Lebenslauf")
     _run(at)
-    assert [d.label for d in at.get("download_button")] == ["⬇ Anschreiben", "⬇ Lebenslauf"]
-    assert db.get_user_settings(uid)["pdf_format"].startswith("📄 Getrennt")
+    assert [d.label for d in at.get("download_button")] == ["Anschreiben", "Lebenslauf"]
+    assert db.get_user_settings(uid)["pdf_format"].startswith("Getrennt")
     # „Als beworben markieren“ setzt NUR den Status – keine zweite Bewerbung
-    _btn(at, "✅ Als beworben markieren").click()
+    _btn(at, "Als beworben markieren").click()
     _run(at)
     apps = db.list_applications(uid)
     assert len(apps) == 1 and apps[0]["status"] == "Beworben"
-    assert not any(b.label == "✅ Als beworben markieren" for b in at.button)
+    assert not any(b.label == "Als beworben markieren" for b in at.button)
 
     # Tracking-Seite: Status ändern und Bewerbung zum Bearbeiten öffnen
-    _btn(at, "📋 Meine Bewerbungen").click()
+    _btn(at, "Meine Bewerbungen").click()
     _run(at)
     assert any("Lumora GmbH" in e.label for e in at.expander)
-    _btn(at, "✏️ Bearbeiten").click()
+    _btn(at, "Bearbeiten").click()
     _run(at)
     assert at.session_state.page == "generate" and at.session_state.gen_step == "review"
     assert at.session_state.gen_app_id == apps[0]["id"]
     # erneut PDF erstellen → aktualisiert dieselbe Bewerbung statt eine neue anzulegen
-    _btn(at, "📄 PDF erstellen").click()
+    _btn(at, "PDF erstellen").click()
     _run(at)
     assert len(db.list_applications(uid)) == 1
 
@@ -298,7 +298,7 @@ def test_daily_limit(env):
     db.log_usage(uid, "generate", "fake-1", 100)
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
     next(t for t in at.text_area if t.label.startswith("… oder Anzeigentext")).input("Stellenanzeige " * 20)
-    _btn(at, "✨ Bewerbung erstellen").click()
+    _btn(at, "Bewerbung erstellen").click()
     _run(at)
     assert at.session_state.gen_step == "manual"           # Limit erreicht → Abo-Modus statt Abbruch
     assert any("Tageslimit" in i.value for i in at.info)
@@ -309,10 +309,10 @@ def test_settings_and_admin_pages_render(env):
     db.create_user("chef@example.com", is_admin=True)
     db.create_user("bernd@example.com")
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)), "chef@example.com")
-    _btn(at, "⚙️ Einstellungen").click()
+    _btn(at, "Einstellungen").click()
     _run(at)
     assert any("Einstellungen" in t.value for t in at.title)
-    _btn(at, "🛡 Verwaltung").click()
+    _btn(at, "Verwaltung").click()
     _run(at)
     assert any("Verwaltung" in t.value for t in at.title)
 
@@ -320,7 +320,7 @@ def test_settings_and_admin_pages_render(env):
 def test_non_admin_has_no_admin_page(env):
     db.create_user("bernd@example.com")
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)), "bernd@example.com")
-    assert not any(b.label == "🛡 Verwaltung" for b in at.button)
+    assert not any(b.label == "Verwaltung" for b in at.button)
 
 
 # ---------------------------------------------------------------------------
@@ -332,13 +332,13 @@ JOB = ("Frontend Developer (m/w/d) bei Lumora GmbH in Köln. Aufgaben: Vue.js, T
 
 def _start_generation(at):
     next(t for t in at.text_area if t.label.startswith("… oder Anzeigentext")).input(JOB)
-    _btn(at, "✨ Bewerbung erstellen").click()
+    _btn(at, "Bewerbung erstellen").click()
     return _run(at)
 
 
 def _paste_answer(at, text):
-    next(t for t in at.text_area if t.label.startswith("Antwort von Gemini")).input(text)
-    _btn(at, "Weiter").click()
+    next(t for t in at.text_area if t.label == "Antwort aus dem Chat").input(text)
+    next(b for b in at.button if b.label.startswith("Antwort übernehmen")).click()
     return _run(at)
 
 
@@ -346,7 +346,7 @@ def test_without_api_key_uses_chat_mode(env, monkeypatch):
     monkeypatch.delenv("FAKE_KEY")                      # keine KI-API eingerichtet
     _user_with_profile()
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    assert any("Keine KI-API eingerichtet" in i.value for i in at.info)
+    assert any("noch keine KI verbunden" in i.value for i in at.info)
     _start_generation(at)
     assert at.session_state.gen_step == "manual"
     prompt = next(c.value for c in at.code)
@@ -379,9 +379,10 @@ def test_cv_import_via_chat_mode(env, monkeypatch):
     uid = db.create_user("anna@example.com")
     db.save_profile(uid, cv_text="Anna Beispiel, Köln. 2020-2024 Verkäuferin bei Muster AG.", cv_filename="cv.txt")
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    _btn(at, "👤 Mein Profil").click()
+    _btn(at, "Mein Profil").click()
     _run(at)
-    _btn(at, "🔁 Gespeicherten CV erneut auslesen").click()
+    assert any("noch keine KI verbunden" in i.value for i in at.info)   # vorab erklärt, wie es ohne KI geht
+    _btn(at, "Gespeicherten Lebenslauf erneut auslesen (cv.txt)").click()
     _run(at)
     assert "Verkäuferin" in next(c.value for c in at.code)
     answer = {"personal": {"name": "Anna Beispiel", "zip_city": "Köln"},
@@ -390,6 +391,9 @@ def test_cv_import_via_chat_mode(env, monkeypatch):
     _paste_answer(at, json.dumps(answer, ensure_ascii=False))
     prof = db.get_profile(uid)["data"]
     assert prof["personal"]["name"] == "Anna Beispiel" and prof["experience"][0]["company"] == "Muster AG"
+    assert at.session_state.profile_tab.endswith("Persönlich")          # springt direkt zu den übernommenen Daten
+    assert any("Lebenslauf übernommen" in x.value for x in at.success)
+    assert next(t for t in at.text_input if t.label == "Vor- und Nachname *").value == "Anna Beispiel"
 
 
 # ---------------------------------------------------------------------------
@@ -407,20 +411,20 @@ def test_first_run_without_key_opens_setup_and_saves_key(env, monkeypatch):
     next(b for b in at.button if b.key == "test_GEMINI_API_KEY").click()
     _run(at)
     assert any("Funktioniert" in m.value for m in at.success)  # Test-Aufruf über das (Fake-)Modell
-    _btn(at, "💾 Speichern").click()
+    _btn(at, "Speichern").click()
     _run(at)
     assert "GEMINI_API_KEY=AIza-test-123" in (env["tmp"] / ".env").read_text(encoding="utf-8")
     assert config.is_set("GEMINI_API_KEY")
-    _btn(at, "✨ Neue Bewerbung").click()
+    _btn(at, "Neue Bewerbung").click()
     _run(at)
-    assert not any("Keine KI-API eingerichtet" in i.value for i in at.info)   # sofort einsatzbereit
+    assert not any("noch keine KI verbunden" in i.value for i in at.info)   # sofort einsatzbereit
 
 
 def test_setup_page_is_admin_only(env):
     db.create_user("chef@example.com", is_admin=True)
     db.create_user("bernd@example.com")
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)), "bernd@example.com")
-    assert not any(b.label == "🔑 KI einrichten" for b in at.button)
+    assert not any(b.label == "KI einrichten" for b in at.button)
 
 
 def test_job_search_rating_and_apply(env, monkeypatch):
@@ -443,12 +447,12 @@ def test_job_search_rating_and_apply(env, monkeypatch):
         return llm.LLMResult(json.dumps({"ratings": [{"id": "J1", "score": 30, "reason": "Java fehlt"},
                                                      {"id": "J2", "score": 88, "reason": "React passt"}]}), 900, 100, "f")
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    _btn(at, "🔎 Jobs finden").click()
+    _btn(at, "Jobs finden").click()
     _run(at)
     assert any(t.value == "Jobs finden" for t in at.title)
     next(t for t in at.text_input if t.label == "Was?").input("Entwickler")
     next(t for t in at.text_input if t.label == "Wo?").input("Köln")
-    _btn(at, "🔎 Suchen").click()
+    _btn(at, "Suchen").click()
     _run(at)
     assert seen["what"] == "Entwickler" and seen["where"] == "Köln" and seen["max_age"] == 30
     assert db.get_user_settings(uid)["job_search"]["where"] == "Köln"
@@ -456,7 +460,7 @@ def test_job_search_rating_and_apply(env, monkeypatch):
     assert any("React" in c.value and "TypeScript" in c.value for c in at.caption)  # Profil-Treffer
 
     monkeypatch.setitem(llm.PROVIDERS, "fake", fake_ai)
-    _btn(at, "🤖 KI-Passung prüfen (2 Stellen)").click()
+    _btn(at, "KI-Passung prüfen (2 Stellen)").click()
     _run(at)
     assert at.session_state.jobs_ratings["R2"]["score"] == 88
     titles = [m.value for m in at.markdown if m.value.startswith("**") and "(m/w/d)" in m.value]
@@ -511,7 +515,7 @@ def test_send_application_via_smtp(env, monkeypatch):
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
     _done_state(at)
     _run(at)
-    _btn(at, "📨 Jetzt von anna@example.com senden").click()
+    _btn(at, "Jetzt von anna@example.com senden").click()
     _run(at)
     msg = FakeSMTP.sent[0][1]
     assert msg["To"] == "jobs@lumora.de" and msg["Subject"] == "Bewerbung als Frontend Developer"
@@ -527,7 +531,7 @@ def test_settings_mail_account(env, monkeypatch):
     monkeypatch.setattr(mailer, "test_account", lambda acc: tested.append(acc))
     uid = _user_with_profile()
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    _btn(at, "⚙️ Einstellungen").click()
+    _btn(at, "Einstellungen").click()
     _run(at)
     assert next(t for t in at.text_input if t.label == "Deine E-Mail-Adresse").value == "anna@example.com"
     next(t for t in at.text_input if t.label == "App-Passwort").input("abcd efgh ijkl mnop")
@@ -535,7 +539,7 @@ def test_settings_mail_account(env, monkeypatch):
     _btn(at, "Verbindung testen").click()
     _run(at)
     assert tested and tested[0]["host"] == "smtp.gmail.com"
-    _btn(at, "💾 Speichern").click()
+    _btn(at, "Speichern").click()
     _run(at)
     assert db.get_user_settings(uid)["mail"]["password"] == "abcd efgh ijkl mnop"
 
@@ -555,19 +559,19 @@ def test_profile_progress_updates_live_and_jumps(env):
     prof["personal"]["name"] = "Max"           # nur Vorname → Punkt offen
     db.save_profile(uid, data=prof)
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    _btn(at, "👤 Mein Profil").click()
+    _btn(at, "Mein Profil").click()
     _run(at)
     before = _progress_text(at)
-    jump = next(b for b in at.button if b.label.startswith("⬜ Vor- und Nachname"))
+    jump = next(b for b in at.button if b.label.startswith("Vor- und Nachname"))
     jump.click()
     _run(at)
-    assert at.session_state.profile_tab == "👤 Persönlich"
+    assert at.session_state.profile_tab.endswith("Persönlich")
     assert any("Hier ergänzen" in i.value for i in at.info)
     next(t for t in at.text_input if t.label == "Vor- und Nachname *").input("Max Mustermann")
     _run(at)
     after = _progress_text(at)
     assert after > before                     # im selben Durchlauf aktualisiert, nicht erst beim nächsten
-    assert not any(b.label.startswith("⬜ Vor- und Nachname") for b in at.button)
+    assert not any(b.label.startswith("Vor- und Nachname") for b in at.button)
 
 
 def test_review_shows_ats_check_and_adds_profile_skill(env, monkeypatch):
@@ -578,7 +582,7 @@ def test_review_shows_ats_check_and_adds_profile_skill(env, monkeypatch):
     at = _login(_run(AppTest.from_file(APP, default_timeout=90)))
     next(t for t in at.text_area if t.label.startswith("… oder Anzeigentext")).input(
         "Frontend Developer (m/w/d) bei Lumora GmbH in Köln. Shopify, Liquid, Tailwind CSS und Vue.js.")
-    _btn(at, "✨ Bewerbung erstellen").click()
+    _btn(at, "Bewerbung erstellen").click()
     _run(at)
     assert at.session_state.gen_step == "review"
     exp = next(e for e in at.expander if "ATS-Check" in e.label)
