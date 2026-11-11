@@ -1,10 +1,11 @@
 """Bewerbungen per E-Mail versenden – aus dem eigenen Postfach des Nutzers.
 
-Zwei Wege:
-1. Ohne Einrichtung: Gmail-Entwurf bzw. Mailprogramm öffnen (Empfänger, Betreff, Text vorausgefüllt);
-   das PDF hängt der Nutzer selbst an.
-2. Direkt aus der App per SMTP mit App-Passwort (Gmail, GMX, WEB.DE …). Die Zugangsdaten liegen nur lokal
-   in den Nutzereinstellungen (data/smartresume.db).
+Drei Wege:
+1. Direkt aus der App per SMTP mit (App-)Passwort (Gmail, GMX, WEB.DE, T-Online, iCloud …). Der Anbieter wird
+   an der Adresse erkannt. Die Zugangsdaten liegen nur lokal in den Nutzereinstellungen (data/smartresume.db).
+2. Ohne Einrichtung: „Entwurf mit Anhang“ – eine .eml-Datei, die sich im Mailprogramm (Outlook, Thunderbird,
+   Apple Mail) als fertige E-Mail mit PDF öffnet.
+3. Ohne Einrichtung: Gmail-Entwurf im Browser (Empfänger, Betreff, Text vorausgefüllt; PDF selbst anhängen).
 
 Die Empfängeradresse kommt aus dem Anzeigentext – die Jobbörsen geben Kontaktdaten nicht heraus.
 """
@@ -18,24 +19,83 @@ from email.utils import formataddr
 from urllib.parse import quote, urlencode
 
 PROVIDERS = {
-    "Gmail": {"host": "smtp.gmail.com", "port": 587, "help_url": "https://myaccount.google.com/apppasswords",
-              "how": "Bei Google muss die **Bestätigung in zwei Schritten** aktiv sein. Dann unter „App-Passwörter“ "
-                     "einen Namen eingeben (z. B. SmartResume) → „Erstellen“ → das 16-stellige Passwort hier "
-                     "einfügen. Dein normales Google-Passwort funktioniert hier nicht.",
-              "saves_sent": True},
-    "GMX": {"host": "mail.gmx.net", "port": 587, "help_url": "https://www.gmx.net/",
-            "how": "Bei GMX unter E-Mail → Einstellungen → „POP3/IMAP Abruf“ den Haken bei „Senden und Empfangen "
-                   "von E-Mails via externem Programm“ setzen. Dann hier dein GMX-Passwort eingeben (bei aktiver "
-                   "Zwei-Faktor-Anmeldung ein App-Passwort).",
-            "saves_sent": False},
-    "WEB.DE": {"host": "smtp.web.de", "port": 587, "help_url": "https://web.de/",
-               "how": "Bei WEB.DE unter E-Mail → Einstellungen → „POP3/IMAP Abruf“ den Haken bei „Senden und "
-                      "Empfangen von E-Mails via externem Programm“ setzen. Dann hier dein WEB.DE-Passwort eingeben "
-                      "(bei aktiver Zwei-Faktor-Anmeldung ein App-Passwort).",
-               "saves_sent": False},
-    "Andere": {"host": "", "port": 587, "help_url": "",
-               "how": "SMTP-Server und Port findest du in der Hilfe deines E-Mail-Anbieters.", "saves_sent": False},
+    "Gmail": {"host": "smtp.gmail.com", "port": 587, "domains": ("gmail.com", "googlemail.com"),
+              "help_url": "https://myaccount.google.com/apppasswords", "help_label": "App-Passwort erstellen",
+              "how": "1. Bei Google muss die **Bestätigung in zwei Schritten** aktiv sein.\n"
+                     "2. Auf **App-Passwort erstellen** klicken, einen Namen eingeben (z. B. SmartResume) und "
+                     "auf „Erstellen“ klicken.\n"
+                     "3. Das 16-stellige Passwort unten einfügen. Dein normales Google-Passwort funktioniert "
+                     "hier nicht.",
+              "password_label": "App-Passwort (16 Buchstaben)", "saves_sent": True},
+    "GMX": {"host": "mail.gmx.net", "port": 587, "domains": ("gmx.de", "gmx.net", "gmx.at", "gmx.ch"),
+            "help_url": "https://www.gmx.net/", "help_label": "GMX öffnen",
+            "how": "1. Bei GMX einloggen: **E-Mail → Einstellungen → POP3/IMAP Abruf**.\n"
+                   "2. Den Haken bei **„Senden und Empfangen von E-Mails via externem Programm“** setzen und "
+                   "speichern.\n"
+                   "3. Unten dein GMX-Passwort eingeben (bei aktiver Zwei-Faktor-Anmeldung ein App-Passwort).",
+            "password_label": "GMX-Passwort", "saves_sent": False},
+    "WEB.DE": {"host": "smtp.web.de", "port": 587, "domains": ("web.de",),
+               "help_url": "https://web.de/", "help_label": "WEB.DE öffnen",
+               "how": "1. Bei WEB.DE einloggen: **E-Mail → Einstellungen → POP3/IMAP Abruf**.\n"
+                      "2. Den Haken bei **„Senden und Empfangen von E-Mails via externem Programm“** setzen und "
+                      "speichern.\n"
+                      "3. Unten dein WEB.DE-Passwort eingeben (bei aktiver Zwei-Faktor-Anmeldung ein "
+                      "App-Passwort).",
+               "password_label": "WEB.DE-Passwort", "saves_sent": False},
+    "T-Online": {"host": "securesmtp.t-online.de", "port": 587, "domains": ("t-online.de", "magenta.de"),
+                 "help_url": "https://email.t-online.de/", "help_label": "T-Online E-Mail öffnen",
+                 "how": "1. Im E-Mail Center von T-Online: **Einstellungen → Passwörter → Passwort für "
+                        "E-Mail-Programme** festlegen.\n"
+                        "2. Dieses Passwort unten eingeben (nicht dein normales Telekom-Login-Passwort).",
+                 "password_label": "Passwort für E-Mail-Programme", "saves_sent": False},
+    "iCloud": {"host": "smtp.mail.me.com", "port": 587, "domains": ("icloud.com", "me.com", "mac.com"),
+               "help_url": "https://account.apple.com/", "help_label": "Apple-Account öffnen",
+               "how": "1. Im Apple-Account: **Anmelden und Sicherheit → App-spezifische Passwörter** → neues "
+                      "Passwort erstellen (Name z. B. SmartResume).\n"
+                      "2. Das Passwort (Format xxxx-xxxx-xxxx-xxxx) unten einfügen.",
+               "password_label": "App-spezifisches Passwort", "saves_sent": False},
+    "Yahoo": {"host": "smtp.mail.yahoo.com", "port": 587, "domains": ("yahoo.com", "yahoo.de", "ymail.com"),
+              "help_url": "https://login.yahoo.com/account/security", "help_label": "Yahoo-Sicherheit öffnen",
+              "how": "1. In den Yahoo-Kontoeinstellungen unter **Kontosicherheit → App-Passwort generieren** ein "
+                     "Passwort erstellen.\n"
+                     "2. Das Passwort unten einfügen.",
+              "password_label": "App-Passwort", "saves_sent": False},
+    "Posteo": {"host": "posteo.de", "port": 587, "domains": ("posteo.de", "posteo.net"),
+               "help_url": "", "help_label": "",
+               "how": "Unten einfach dein Posteo-Passwort eingeben – es ist nichts weiter einzurichten.",
+               "password_label": "Posteo-Passwort", "saves_sent": False},
+    "mailbox.org": {"host": "smtp.mailbox.org", "port": 587, "domains": ("mailbox.org",),
+                    "help_url": "", "help_label": "",
+                    "how": "Unten dein mailbox.org-Passwort eingeben (bei Zwei-Faktor-Anmeldung ein "
+                           "App-Passwort).",
+                    "password_label": "Passwort", "saves_sent": False},
+    "freenet": {"host": "mx.freenet.de", "port": 587, "domains": ("freenet.de",),
+                "help_url": "https://email.freenet.de/", "help_label": "freenet Mail öffnen",
+                "how": "1. In freenet Mail unter **Einstellungen → POP3/IMAP/SMTP** den Zugriff über externe "
+                       "Programme aktivieren.\n"
+                       "2. Unten dein freenet-Passwort eingeben.",
+                "password_label": "freenet-Passwort", "saves_sent": False},
+    "Outlook / Hotmail": {"host": "", "port": 587, "unsupported": True,
+                          "domains": ("outlook.com", "outlook.de", "hotmail.com", "hotmail.de", "live.com",
+                                      "live.de", "msn.com"),
+                          "help_url": "", "help_label": "",
+                          "how": "Microsoft lässt bei privaten Outlook-, Hotmail- und Live-Adressen den Versand aus "
+                                 "anderen Programmen nicht mehr per Passwort zu. Nutze deshalb bei der fertigen "
+                                 "Bewerbung **„Entwurf mit Anhang“**: Die Datei öffnet sich in Outlook als fertige "
+                                 "E-Mail mit PDF – du klickst nur noch auf Senden.",
+                          "password_label": "", "saves_sent": True},
+    "Andere": {"host": "", "port": 587, "domains": (), "help_url": "", "help_label": "",
+               "how": "SMTP-Server und Port findest du in der Hilfe deines E-Mail-Anbieters (Stichwort „SMTP“ "
+                      "oder „E-Mail-Programm einrichten“).",
+               "password_label": "Passwort", "saves_sent": False},
 }
+
+
+def detect_provider(address: str) -> str:
+    """Anbieter anhand der Adresse („max@gmx.de“ → „GMX“); unbekannt → „Andere“."""
+    domain = (address or "").strip().lower().rsplit("@", 1)[-1]
+    return next((name for name, p in PROVIDERS.items() if domain in p["domains"]), "Andere")
+
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}")
 _GOOD = ("bewerb", "karriere", "career", "jobs", "job", "recruit", "personal", "hr", "talent", "people")
@@ -123,6 +183,23 @@ def build_message(acc: dict, sender_name: str, to: str, subject: str, body: str,
     for data, filename in attachments:
         msg.add_attachment(data, maintype="application", subtype="pdf", filename=filename)
     return msg
+
+
+def build_draft(sender_name: str, sender_address: str, to: str, subject: str, body: str,
+                attachments: list[tuple[bytes, str]]) -> bytes:
+    """E-Mail-Entwurf als .eml-Datei: öffnet sich im Mailprogramm als neue, noch nicht gesendete Nachricht
+    mit allen Anhängen (X-Unsent). Empfänger darf leer sein."""
+    msg = EmailMessage()
+    msg["X-Unsent"] = "1"
+    msg["Subject"] = subject
+    if sender_address:
+        msg["From"] = formataddr((sender_name, sender_address)) if sender_name else sender_address
+    if valid_email(to):
+        msg["To"] = to.strip()
+    msg.set_content(body)
+    for data, filename in attachments:
+        msg.add_attachment(data, maintype="application", subtype="pdf", filename=filename)
+    return msg.as_bytes()
 
 
 def _connect(acc: dict):

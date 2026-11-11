@@ -57,7 +57,12 @@ Hinweis: Bei kostenlosen Angeboten können Anbieter Eingaben zum Training nutzen
 Lebenslaufdaten. Limits ändern sich häufig; aktuelle Werte stehen in den Konsolen der Anbieter.
 
 ## Login (ohne Passwort)
+**Lokal** (`SmartResume.exe` bzw. „SmartResume starten.bat“): E-Mail-Adresse eingeben → fertig. Kein Code,
+kein Passwort; man bleibt angemeldet, bis man sich abmeldet. Jede Adresse ist ein eigenes Konto auf diesem PC
+(mehrere Personen können denselben PC nutzen). Das ist sicher, weil der Launcher die App nur unter
+`127.0.0.1` erreichbar macht (`SMARTRESUME_LOCAL=1`).
 
+**Auf einem Server** (ohne Launcher):
 1. E-Mail eingeben → **Code senden**
 2. 6-stelligen Code aus der Mail eingeben – oder auf den Link in der Mail klicken
 3. Fertig. Neue E-Mail-Adressen bekommen automatisch ein Konto (abschaltbar in `branding.json`).
@@ -65,7 +70,7 @@ Lebenslaufdaten. Limits ändern sich häufig; aktuelle Werte stehen in den Konso
 
 Codes sind 10 Minuten gültig, nach 5 Fehlversuchen gesperrt; in der DB liegt nur ein Hash.
 Für den Mailversand SMTP in `.env` eintragen (siehe `.env.example`). **Ohne SMTP** zeigt die App den Code
-bei lokalem Betrieb (`localhost`) direkt an, sonst steht er in der Server-Konsole.
+bei Aufruf über `localhost` direkt an, sonst steht er in der Server-Konsole.
 
 ## Speicherung
 
@@ -79,7 +84,7 @@ Logins). Kein Cloud-Dienst nötig, Backup = diese Datei kopieren. `data/` ist ni
 | Profil | 5 übersichtliche Bereiche mit Fortschrittsanzeige, wird automatisch gespeichert. Skills als Chips (Enter drücken), keine Doppelten. Lebenslauf (PDF/DOCX/TXT) hochladen → KI liest **einmalig** aus → alles editierbar. Oder manuell eingeben. Foto (auch direkt aus dem PDF), Unterschrift, Skills, Sprachen, Projekte, Stärken mit Beleg, Rahmen (Gehalt, Verfügbarkeit, Studium), eigener Schreibstil, Akzentfarbe. JSON-Export/-Import. |
 | Jobs finden | Stellensuche über die Jobbörse der Bundesagentur für Arbeit (kein Konto nötig): Was, Wo, Umkreis, Beschäftigungsart, Zeitraum. Erkennt das Fachgebiet und sucht verwandte Begriffe mit (z. B. „Software“ → Softwareentwicklung, Informatik, Developer …); bei Werkstudent/Praktikum werden alle Stellen dieser Art im Umkreis geholt. Unpassendes wird anhand von Titel und Berufsangabe aussortiert, Treffer nach Relevanz sortiert. Zeigt Gehalt, Homeoffice, Profil-Treffer und „schon beworben“. Optional **KI-Passung** 0–100 % mit Begründung und fehlenden Anforderungen (ein Aufruf für bis zu 25 Stellen). **„Bewerbung erstellen“** übernimmt den kompletten Anzeigentext. |
 | Bewerbung | Link (liest JobPosting-JSON-LD der Jobbörsen) oder Text, Beschäftigungsart (Vollzeit, Teilzeit, Werkstudent, Praktikum, Ausbildung, Minijob, Freelance), Zusatz-Skills, Schwerpunkt. |
-| Versand | E-Mail-Adresse wird aus der Anzeige übernommen (Bewerbungsadresse zuerst). Direkt aus der App senden – mit PDF im Anhang, über das eigene Postfach (Gmail mit App-Passwort, GMX, WEB.DE, eigener SMTP; einrichten unter Einstellungen). Ohne Einrichtung: fertiger Gmail-Entwurf bzw. Mailprogramm. Gesendete Bewerbungen landen in „Meine Bewerbungen“. |
+| Versand | E-Mail-Adresse wird aus der Anzeige übernommen (Bewerbungsadresse zuerst). Direkt aus der App senden – mit PDF im Anhang, über das eigene Postfach (einrichten unter Einstellungen: Anbieter wird an der Adresse erkannt, Anleitung je Anbieter – Gmail, GMX, WEB.DE, T-Online, iCloud, Yahoo, Posteo, mailbox.org, freenet oder eigener SMTP). Ohne Einrichtung: **Entwurf mit Anhang** (.eml, öffnet sich in Outlook, Thunderbird, Apple Mail als fertige Mail mit PDF – auch für Outlook/Hotmail-Adressen, die keinen Passwort-Versand mehr erlauben) oder Gmail-Entwurf im Browser. Gesendete Bewerbungen landen in „Meine Bewerbungen“. |
 | ATS-Optimierung | Für Bewerbermanagement-Software (Personio, SAP SuccessFactors, Workday …): Die KI nutzt die exakten Begriffe der Anzeige, wo sie laut Profil zutreffen („MS Excel“ statt „Excel“). **ATS-Check** in der Vorschau: Anteil der Schlüsselbegriffe der Anzeige in den Unterlagen, ehrlich erreichbarer Wert, Ein-Klick-Korrekturen (nur für Fähigkeiten aus dem Profil). PDF mit echtem Text, Standard-Überschriften, Name auf jeder Lebenslauf-Seite, Links als lesbarer Text, Titel/Schlüsselwörter in den PDF-Metadaten; Anschreiben und Lebenslauf zusätzlich als getrennte Dateien für Portale. |
 | Ehrlichkeit | Die KI liefert nur Texte + Referenzen auf Profileinträge; Firmen, Zeiträume, Ausbildung, Gehalt und Eintrittstermin setzt Python aus dem Profil ein. Regel-Check (Übertreibung, Unterverkaufen, Wiederholungen, erfundene Zahlen, Du/Sie-Mix, Widersprüche) + optionaler KI-Faktencheck + Auto-Korrektur. Fehlende Anforderungen werden angezeigt, aber nie behauptet. |
 | Modelle | Gemini, OpenAI-kompatibel (Groq, Mistral, OpenRouter, Ollama …), Claude. Automatischer Wechsel bei Limit/Timeout/Überlastung, zuletzt Abo-Modus. |

@@ -72,7 +72,7 @@ def _base_url() -> str:
 
 def _write_cookie(token: str) -> None:
     """Setzt (oder löscht bei leerem Token) das Sitzungs-Cookie im Browser."""
-    age = auth.SESSION_TTL if token else 0
+    age = auth.session_ttl() if token else 0
     js = f"document.cookie = '{COOKIE}={token}; path=/; max-age={age}; SameSite=Lax';"
     try:
         st.html(f"<script>{js}</script>", unsafe_allow_javascript=True)   # Streamlit ≥ 1.5x, ohne iframe
@@ -138,6 +138,10 @@ def _complete_login(email: str) -> None:
         first = db.needs_setup()
         db.create_user(email, is_admin=first)                # erstes Konto = Admin
         user = db.get_user_by_email(email)
+        prof = db.get_profile(user["id"])["data"]                # Login-Adresse als Kontakt-E-Mail vorschlagen
+        if not prof["personal"]["email"]:
+            prof["personal"]["email"] = email
+            db.save_profile(user["id"], data=prof)
         page = "profile"                                     # neue Nutzer starten beim Profil
         if first and not _any_ai_key():
             page = "setup"                                   # Ersteinrichtung: zuerst kostenlose KI verbinden
@@ -147,6 +151,26 @@ def _complete_login(email: str) -> None:
     st.session_state.session_token = auth.create_session(user["id"])
     st.session_state.page = page
     st.rerun()
+
+
+def _local_step() -> None:
+    """Lokal (nur dieser PC): E-Mail-Adresse eingeben, fertig – kein Code, kein Passwort."""
+    with st.form("form_local"):
+        email = st.text_input("Deine E-Mail-Adresse", placeholder="du@beispiel.de", autocomplete="email")
+        st.caption("Sie ist dein Konto auf diesem PC – Profil und Bewerbungen werden darunter gespeichert. "
+                   "Kein Passwort, kein Code. Du bleibst angemeldet, bis du dich abmeldest.")
+        if not st.form_submit_button("Weiter", type="primary", use_container_width=True,
+                                     icon=":material/arrow_forward:"):
+            return
+    try:
+        email = db.normalize_email(email)
+    except db.UserError as e:
+        st.error(str(e))
+        return
+    if not db.needs_setup() and not db.get_user_by_email(email) and not BR["allow_registration"]:
+        st.error("Für diese E-Mail gibt es kein Konto. Bitte wende dich an den Administrator.")
+        return
+    _complete_login(email)
 
 
 def _email_step(setup: bool) -> None:
@@ -220,7 +244,9 @@ def _login() -> None:
         st.caption(BR["tagline"])
     if err := st.session_state.pop("login_error", None):
         st.error(err)
-    if st.session_state.get("login_email"):
+    if auth.local_mode():
+        _local_step()
+    elif st.session_state.get("login_email"):
         _code_step(st.session_state.login_email)
     else:
         _email_step(setup)

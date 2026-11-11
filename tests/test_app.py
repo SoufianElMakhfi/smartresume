@@ -265,11 +265,11 @@ def test_full_generation_flow(env):
     apps = db.list_applications(uid)
     assert len(apps) == 1 and apps[0]["company"] == "Lumora GmbH" and apps[0]["status"] == "Erstellt"
     assert "Vue.js" in db.get_application(uid, apps[0]["id"])["job_text"]
-    assert [d.label for d in at.get("download_button")] == ["Bewerbungsmappe (PDF)"]
+    assert [d.label for d in at.get("download_button") if d.label != "Entwurf mit Anhang"] == ["Bewerbungsmappe (PDF)"]
     # getrennt: Anschreiben + Lebenslauf (Wahl wird gemerkt)
     at.segmented_control(key="gen_format").set_value("Getrennt: Anschreiben + Lebenslauf")
     _run(at)
-    assert [d.label for d in at.get("download_button")] == ["Anschreiben", "Lebenslauf"]
+    assert [d.label for d in at.get("download_button") if d.label != "Entwurf mit Anhang"] == ["Anschreiben", "Lebenslauf"]
     assert db.get_user_settings(uid)["pdf_format"].startswith("Getrennt")
     # „Als beworben markieren“ setzt NUR den Status – keine zweite Bewerbung
     _btn(at, "Als beworben markieren").click()
@@ -501,7 +501,9 @@ def test_send_application_without_mail_account_offers_gmail_draft(env):
     _run(at)
     assert next(t for t in at.text_input if t.label == "An").value == "jobs@lumora.de"
     assert "anbei sende ich Ihnen" in next(t for t in at.text_area if t.label == "Text der E-Mail").value
-    assert any("E-Mail-Konto einrichten" in b.label for b in at.button)
+    assert any("E-Mail-Konto verbinden" in b.label for b in at.button)
+    draft = next(d for d in at.get("download_button") if d.label == "Entwurf mit Anhang")
+    assert draft.proto.label == "Entwurf mit Anhang"            # .eml mit PDF – öffnet in Outlook & Co.
 
 
 def test_send_application_via_smtp(env, monkeypatch):
@@ -535,7 +537,10 @@ def test_settings_mail_account(env, monkeypatch):
     _btn(at, "Einstellungen").click()
     _run(at)
     assert next(t for t in at.text_input if t.label == "Deine E-Mail-Adresse").value == "anna@example.com"
-    next(t for t in at.text_input if t.label == "App-Passwort").input("abcd efgh ijkl mnop")
+    next(t for t in at.text_input if t.label == "Deine E-Mail-Adresse").input("anna@gmail.com")
+    _run(at)                                                   # Anbieter wird an der Adresse erkannt
+    assert next(s for s in at.selectbox if s.label == "Anbieter").value == "Gmail"
+    next(t for t in at.text_input if t.label.startswith("App-Passwort")).input("abcd efgh ijkl mnop")
     _run(at)
     _btn(at, "Verbindung testen").click()
     _run(at)
@@ -594,3 +599,25 @@ def test_review_shows_ats_check_and_adds_profile_skill(env, monkeypatch):
     assert "50 %" in exp.label
     assert any("Tailwind CSS" in str(s.get("items")) for s in at.session_state.gen["structured"]["skills"])
     assert not any("Vue.js" in str(s.get("items")) for s in at.session_state.gen["structured"]["skills"])
+
+
+def test_local_mode_login_with_email_only(env, monkeypatch):
+    monkeypatch.setenv("SMARTRESUME_LOCAL", "1")              # so startet SmartResume.exe / starten.bat
+    at = _run(AppTest.from_file(APP, default_timeout=60))
+    assert not any(t.label == "Code" for t in at.text_input)
+    next(t for t in at.text_input if t.label == "Deine E-Mail-Adresse").input("Lena@Example.com")
+    _btn(at, "Weiter").click()
+    _run(at)
+    user = at.session_state.user
+    assert user["email"] == "lena@example.com" and user["is_admin"] and not SENT   # kein Code verschickt
+    assert db.get_profile(user["id"])["data"]["personal"]["email"] == "lena@example.com"
+    import time
+    with db.connect() as con:
+        expires = con.execute("SELECT expires_at FROM sessions WHERE user_id=?", (user["id"],)).fetchone()[0]
+    assert expires - time.time() > 5 * 365 * 24 * 3600         # bleibt angemeldet
+    # zweite Person am selben PC bekommt ein eigenes Konto
+    at2 = _run(AppTest.from_file(APP, default_timeout=60))
+    next(t for t in at2.text_input if t.label == "Deine E-Mail-Adresse").input("tom@example.com")
+    _btn(at2, "Weiter").click()
+    _run(at2)
+    assert at2.session_state.user["id"] != user["id"] and not at2.session_state.user["is_admin"]

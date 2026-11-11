@@ -24,6 +24,7 @@ CODE_TTL = 10 * 60
 RESEND_AFTER = 30
 MAX_ATTEMPTS = 5
 SESSION_TTL = 30 * 24 * 3600
+LOCAL_SESSION_TTL = 10 * 365 * 24 * 3600     # lokal: angemeldet bleiben, bis man sich abmeldet
 
 
 class AuthError(ValueError):
@@ -89,6 +90,17 @@ def verify_code(email: str, code: str, path=None) -> bool:
 # ---------------------------------------------------------------------------
 # Versand
 # ---------------------------------------------------------------------------
+def local_mode() -> bool:
+    """Lokaler Betrieb (SmartResume.exe bzw. „SmartResume starten.bat“): Der Launcher bindet die App an
+    127.0.0.1 und setzt SMARTRESUME_LOCAL=1. Dann reicht zum Anmelden die E-Mail-Adresse – ohne Code, denn nur
+    wer an diesem PC sitzt, erreicht die App. Auf einem Server (ohne den Launcher) bleibt der Code Pflicht."""
+    return os.environ.get("SMARTRESUME_LOCAL") == "1"
+
+
+def session_ttl() -> int:
+    return LOCAL_SESSION_TTL if local_mode() else SESSION_TTL
+
+
 def smtp_configured() -> bool:
     return bool(os.environ.get("SMTP_HOST"))
 
@@ -146,13 +158,13 @@ def send_code(email: str, code: str, app_name: str = "SmartResume", link: str = 
 # ---------------------------------------------------------------------------
 # Sitzungen (bleiben über Neuladen erhalten)
 # ---------------------------------------------------------------------------
-def create_session(user_id: int, path=None) -> str:
+def create_session(user_id: int, path=None, ttl: int | None = None) -> str:
     token = secrets.token_urlsafe(32)
     now = time.time()
     with db.connect(path) as con:
         con.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
         con.execute("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?,?,?)",
-                    (_hash(token), user_id, now + SESSION_TTL))
+                    (_hash(token), user_id, now + (ttl or session_ttl())))
     return token
 
 

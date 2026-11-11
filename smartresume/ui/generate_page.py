@@ -549,16 +549,22 @@ def _send_section(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -
             st.session_state.gen_sent = to.strip()
             st.rerun()
     else:
+        personal = prof["data"]["personal"]
+        draft = mailer.build_draft(personal.get("name", ""), personal.get("email") or st.session_state.user["email"],
+                                   to, subject, body, docs)
+        company = re.sub(r"[^\w-]+", "_", s["cover_letter"].get("company") or "Bewerbung").strip("_")[:40]
         c1, c2 = st.columns(2)
-        c1.link_button("Als Gmail-Entwurf öffnen", mailer.gmail_compose_url(to, subject, body),
+        c1.download_button("Entwurf mit Anhang", draft, file_name=f"Bewerbung_{company}.eml", mime="message/rfc822",
+                           use_container_width=True, icon=":material/attach_email:", key="gen_mail_draft")
+        c1.caption("Für Outlook, Thunderbird oder Apple Mail: Datei öffnen – Empfänger, Text und PDF sind schon "
+                   "drin, nur noch senden. (Thunderbird: „Als neu bearbeiten“.)")
+        c2.link_button("Gmail-Entwurf öffnen", mailer.gmail_compose_url(to, subject, body),
                        use_container_width=True, disabled=not ok_to, icon=":material/drafts:")
-        c2.link_button("Im Mailprogramm öffnen", mailer.mailto_url(to, subject, body),
-                       use_container_width=True, disabled=not ok_to, icon=":material/mail:")
-        st.caption("Die Datei" + ("en" if len(docs) > 1 else "") + " unten herunterladen und im Entwurf "
-                   "anhängen (Büroklammer oder per Drag & Drop).")
-        if st.button("Direkt aus SmartResume senden – E-Mail-Konto einrichten (2 Minuten)", icon=":material/settings:"):
+        c2.caption("Für Gmail im Browser: Text ist vorausgefüllt, die PDF" + (
+            "s" if len(docs) > 1 else "") + " unten herunterladen und anhängen.")
+        if st.button("Lieber mit einem Klick senden – E-Mail-Konto verbinden (2 Minuten)",
+                     icon=":material/settings:"):
             go("settings")
-            st.rerun()
 
 
 def _ats_fix(action: str, term: str, profile_word: str = "") -> None:

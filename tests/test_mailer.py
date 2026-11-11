@@ -110,3 +110,28 @@ def test_gmail_rejection_is_explained(monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP", Rejecting)
     with pytest.raises(mailer.MailError, match="App-Passwort.*14 Zeichen"):
         mailer.test_account({**ACC, "password": "normalesPW1234"})
+
+
+def test_detect_provider():
+    assert mailer.detect_provider("Max@GMX.de ") == "GMX"
+    assert mailer.detect_provider("max@googlemail.com") == "Gmail"
+    assert mailer.detect_provider("max@t-online.de") == "T-Online"
+    assert mailer.detect_provider("max@hotmail.de") == "Outlook / Hotmail"
+    assert mailer.PROVIDERS["Outlook / Hotmail"]["unsupported"]
+    assert mailer.detect_provider("max@firma.de") == mailer.detect_provider("") == "Andere"
+    for name, p in mailer.PROVIDERS.items():                 # jeder nutzbare Anbieter hat Server und Anleitung
+        assert p["how"] and (p.get("unsupported") or name == "Andere" or p["host"]), name
+
+
+def test_build_draft_opens_as_unsent_mail_with_attachments():
+    import email
+    import email.policy
+    raw = mailer.build_draft("Max Mustermann", "max@example.com", "jobs@firma.de", "Bewerbung als Entwickler",
+                             "Sehr geehrte Damen und Herren,", [(b"%PDF-1", "Anschreiben.pdf"),
+                                                               (b"%PDF-2", "Lebenslauf.pdf")])
+    msg = email.message_from_bytes(raw, policy=email.policy.default)
+    assert msg["X-Unsent"] == "1" and msg["To"] == "jobs@firma.de" and "Max Mustermann" in msg["From"]
+    names = [part.get_filename() for part in msg.iter_attachments()]
+    assert names == ["Anschreiben.pdf", "Lebenslauf.pdf"]
+    no_to = email.message_from_bytes(mailer.build_draft("", "", "", "Betreff", "Text", []))
+    assert no_to["To"] is None and no_to["From"] is None              # Empfänger darf noch fehlen

@@ -86,6 +86,7 @@ def main() -> int:
     from smartresume import paths
 
     port = int(os.environ.get("SMARTRESUME_PORT") or _free_port())
+    os.environ["SMARTRESUME_LOCAL"] = "1"   # nur über 127.0.0.1 erreichbar → Anmeldung nur mit E-Mail
     url = f"http://127.0.0.1:{port}"
     print("=" * 60)
     print(" SmartResume läuft.")
