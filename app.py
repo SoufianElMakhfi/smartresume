@@ -264,8 +264,8 @@ def _login() -> None:
 # Hauptnavigation
 # ---------------------------------------------------------------------------
 def _main() -> None:
-    from smartresume.ui import (admin_page, generate_page, jobs_page, profile_page, settings_page, setup_page,
-                                tracking_page)
+    from smartresume.ui import (admin_page, generate_page, info_page, jobs_page, profile_page, settings_page,
+                                setup_page, tracking_page)
 
     user = st.session_state.user
     pages = {"generate": ("Neue Bewerbung", ":material/edit_document:"),
@@ -277,6 +277,7 @@ def _main() -> None:
         pages["setup"] = ("KI einrichten", ":material/key:")
     if user["is_admin"] and not auth.local_mode():          # Nutzerverwaltung nur beim Betrieb als Server
         pages["admin"] = ("Verwaltung", ":material/admin_panel_settings:")
+    pages["info"] = ("Hilfe & Info", ":material/help:")
     st.session_state.setdefault("page", "generate")
     if st.session_state.page not in pages:
         st.session_state.page = "generate"
@@ -300,7 +301,7 @@ def _main() -> None:
 
     {"generate": generate_page.render_page, "jobs": jobs_page.render, "profile": profile_page.render, "tracking": tracking_page.render,
      "settings": settings_page.render, "setup": setup_page.render,
-     "admin": admin_page.render}[st.session_state.page]()
+     "admin": admin_page.render, "info": info_page.render}[st.session_state.page]()
     _write_cookie(st.session_state.get("session_token", ""))  # angemeldet bleiben (30 Tage)
 
 

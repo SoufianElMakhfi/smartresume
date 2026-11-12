@@ -17,6 +17,19 @@ def branding() -> dict:
     return st.session_state.branding
 
 
+def report_url(subject: str, body: str = "") -> str:
+    """mailto-Link an den Support (Problem melden, KI-Inhalt melden). Leer, wenn keine Support-Adresse gesetzt ist."""
+    import platform
+    from urllib.parse import quote
+
+    from .. import __version__
+    to = branding().get("support_email") or ""
+    if not to:
+        return ""
+    info = f"\n\n---\n{branding()['app_name']} {__version__} · Windows {platform.version()}"
+    return f"mailto:{to}?subject={quote(subject)}&body={quote(body + info)}"
+
+
 def user() -> dict | None:
     return st.session_state.get("user")
 

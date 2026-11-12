@@ -225,7 +225,7 @@ def selftest() -> int:
         _ensure_streams()
         mods = ["smartresume.ui.generate_page", "smartresume.ui.profile_page", "smartresume.ui.setup_page",
                 "smartresume.ui.settings_page", "smartresume.ui.jobs_page", "smartresume.ui.tracking_page",
-                "smartresume.ui.admin_page",
+                "smartresume.ui.admin_page", "smartresume.ui.info_page",
                 "google.genai", "anthropic", "pypdf", "docx", "bs4", "PIL", "pandas", "requests"]
         if sys.platform == "win32":
             mods += ["webview", "clr"]
@@ -262,6 +262,9 @@ def selftest() -> int:
         assert any("Willkommen" in s.value or "Ersteinrichtung" in s.value for s in at.subheader), \
             "Startseite unvollständig"
         print("Startseite: ok")
+        for name in ("PRIVACY.md", "LICENSE"):
+            assert (paths.app_dir() / name).exists(), f"{name} fehlt im Paket"
+        print("Datenschutz/Lizenz: ok")
     print("SELFTEST OK")
     return 0
 

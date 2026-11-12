@@ -12,7 +12,7 @@ from .. import ats, auth, bridge, db, generate, llm, mailer, quality, render
 from ..profile import EMPLOYMENT_TYPES, add_skills, default_employment_type, is_profile_usable
 from ..scrape import ScrapeError, scrape_url
 from .common import (branding, chat_bridge, check_limit, fallback_chain, fmt_tokens, go, model_picker,
-                     notify_switch, record_usage, show_findings, uid)
+                     notify_switch, record_usage, report_url, show_findings, uid)
 
 GEN_KEYS = ("gen_step", "gen", "gen_pdf", "gen_app_id", "gen_factcheck", "gen_manual", "repair_manual",
             "gen_sent", "gen_mail_to", "gen_mail_subject", "gen_mail_body", "gen_mail_copy", "gen_saved",
@@ -498,6 +498,19 @@ def _done() -> None:
     elif app:
         st.success(f"Status: **{app['status']}** (seit {app['applied_at']}) – ändern unter „Meine Bewerbungen“.",
                    icon=":material/task_alt:")
+    _report_ai_content(g, s)
+
+
+def _report_ai_content(g: dict, s: dict) -> None:
+    """KI-Hinweis + Meldeweg für unpassende Inhalte (Microsoft-Store-Richtlinie 11.16)."""
+    st.caption("Die Texte wurden von einer KI erstellt (Fakten wie Firmen, Zeiträume und Abschlüsse stammen "
+               "unverändert aus deinem Profil). Bitte lies sie vor dem Versand.")
+    job = s.get("cover_letter") or {}
+    url = report_url("KI-Inhalt melden", "Was ist an dem erzeugten Text unpassend oder falsch?\n\n"
+                     f"Stelle: {job.get('job_title', '')} – {job.get('company', '')}\nModell: {g.get('model', '')}\n"
+                     "(Bitte keine Bewerbungsunterlagen anhängen, wenn es nicht nötig ist.)")
+    if url:
+        st.link_button("Unpassenden KI-Inhalt melden", url, icon=":material/flag:")
 
 
 def _send_section(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -> None:

@@ -663,3 +663,14 @@ def test_settings_backup_section(env):
     _btn(at, "Sicherung erstellen").click()
     _run(at)
     assert at.session_state.backup_zip[:2] == b"PK"                 # ZIP liegt zum Herunterladen bereit
+
+
+def test_info_page_has_privacy_report_and_licenses(env):
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _btn(at, "Hilfe & Info").click()
+    _run(at)
+    links = {b.label: b.url for b in at.get("link_button")}
+    assert links["Problem melden / Feedback"].startswith("mailto:mail@soufian.me?subject=")
+    assert "Unpassenden KI-Inhalt melden" in links
+    assert any("Datenschutzerklärung" in e.label for e in at.expander)
+    assert any("Affero" in m.value for m in at.markdown)

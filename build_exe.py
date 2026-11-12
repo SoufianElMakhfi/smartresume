@@ -30,6 +30,7 @@ def pyinstaller_args(onefile: bool = True) -> list[str]:
         "--add-data", f"fonts{SEP}fonts",
         "--add-data", f"icons{SEP}icons",
         "--add-data", f"LICENSE{SEP}.",
+        "--add-data", f"PRIVACY.md{SEP}.",
         "--collect-submodules", "smartresume",
         "--collect-all", "streamlit",
         "--collect-all", "typst",

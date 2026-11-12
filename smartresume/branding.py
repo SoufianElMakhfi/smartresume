@@ -25,7 +25,7 @@ DEFAULT_BRANDING = {
     "invite_code": "",             # wenn gesetzt: Registrierung nur mit diesem Code
     "default_model": "",           # Label aus models.json, leer = erstes Modell
     "daily_limit_per_user": 0,     # max. KI-Bewerbungen/Tag pro Nutzer (0 = unbegrenzt, danach Abo-Modus)
-    "support_email": "",
+    "support_email": "mail@soufian.me",   # Problem melden / KI-Inhalt melden (Store-Richtlinie 11.16)
     "footer": "",
     "accent_presets": {
         "Petrol": "#0F5F6E", "Navy": "#1F3A5F", "Anthrazit": "#333333",
