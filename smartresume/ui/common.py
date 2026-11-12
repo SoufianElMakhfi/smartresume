@@ -125,12 +125,14 @@ _SVG_CHECK = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" 
               '424Z"/></svg>')
 
 
-def _copy_buttons(prompt: str) -> None:
-    """Knöpfe, die den Auftrag in die Zwischenablage kopieren und den Chat in einem neuen Tab öffnen.
-    Die Knöpfe werden per Skript erzeugt (kein onclick-Attribut nötig)."""
+def _copy_buttons_html(prompt: str) -> str:
+    """HTML+Skript für die Kopieren-Knöpfe.
+    Wichtig: Im Skript darf kein „<“ vor einem Buchstaben oder „/“ stehen – Streamlit bereinigt st.html mit
+    DOMPurify, und das entfernt jedes Element, dessen Text wie HTML aussieht (dann fehlen die Knöpfe einfach).
+    Deshalb steht „<“ in den Daten als \\u003c und im Code als \\x3c."""
     bid = "sr" + hashlib.sha1(prompt.encode()).hexdigest()[:10]
     cfg = json.dumps({"id": bid, "text": prompt, "accent": branding().get("accent_color") or "#0F5F6E",
-                      "sites": bridge.CHAT_SITES, "copy": _SVG_COPY, "check": _SVG_CHECK}).replace("</", "<\\/")
+                      "sites": bridge.CHAT_SITES, "copy": _SVG_COPY, "check": _SVG_CHECK}).replace("<", "\\u003c")
     js = r"""
 (function () {
   var c = %s;
@@ -145,7 +147,7 @@ def _copy_buttons(prompt: str) -> None:
     if (!ok) { alert('Kopieren nicht möglich - bitte den Auftrag unter "Auftrag selbst kopieren" markieren.'); }
     return ok;
   }
-  function label(b, icon, text) { b.innerHTML = icon + '<span>' + text + '</span>'; }
+  function label(b, icon, text) { b.innerHTML = icon + '\x3cspan>' + text + '\x3c/span>'; }
   function build(tries) {
     var box = document.getElementById(c.id);
     if (!box) { if (tries < 50) { setTimeout(function () { build(tries + 1); }, 100); } return; }
@@ -171,8 +173,14 @@ def _copy_buttons(prompt: str) -> None:
   build(0);
 })();
 """ % cfg
-    body = (f'<div id="{bid}" style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.25rem 0 .5rem"></div>'
+    return (f'<div id="{bid}" style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.25rem 0 .5rem"></div>'
             f"<script>{js}</script>")
+
+
+def _copy_buttons(prompt: str) -> None:
+    """Knöpfe, die den Auftrag in die Zwischenablage kopieren und den Chat in einem neuen Tab öffnen.
+    Die Knöpfe werden per Skript erzeugt (kein onclick-Attribut nötig)."""
+    body = _copy_buttons_html(prompt)
     try:
         st.html(body, unsafe_allow_javascript=True)
     except TypeError:  # ältere Streamlit-Versionen: im iframe
