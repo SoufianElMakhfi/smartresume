@@ -38,6 +38,31 @@ def packaged() -> bool:
         return False
 
 
+def package_family_name() -> str:
+    """z. B. „Soubasa.smartresume_abc123xyz“ – leer, wenn nicht als Store-App gestartet."""
+    if not packaged():
+        return ""
+    import ctypes
+    length = ctypes.c_uint32(0)
+    kernel32 = ctypes.windll.kernel32
+    kernel32.GetCurrentPackageFamilyName(ctypes.byref(length), None)
+    buf = ctypes.create_unicode_buffer(length.value)
+    if kernel32.GetCurrentPackageFamilyName(ctypes.byref(length), buf) != 0:
+        return ""
+    return buf.value
+
+
+def real_home_dir() -> Path:
+    """Wo die Daten für den Explorer wirklich liegen. Als Store-App leitet Windows Schreibzugriffe auf
+    %LOCALAPPDATA% in den Paketordner um – der Explorer sieht nur diesen echten Pfad."""
+    home = home_dir()
+    family = package_family_name()
+    local = os.environ.get("LOCALAPPDATA")
+    if family and local and not os.environ.get("SMARTRESUME_HOME"):
+        return Path(local) / "Packages" / family / "LocalCache" / "Local" / "SmartResume"
+    return home
+
+
 def home_dir() -> Path:
     if os.environ.get("SMARTRESUME_HOME"):
         return Path(os.environ["SMARTRESUME_HOME"])

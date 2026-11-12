@@ -247,7 +247,7 @@ def _photo(stored: dict) -> None:
             st.session_state.photo_candidates = []
             st.toast("Foto übernommen.", icon=":material/photo_camera:")
             st.rerun()
-    up = st.file_uploader("Foto hochladen", type=["jpg", "jpeg", "png", "webp"], key="photo_up",
+    up = st.file_uploader("Foto hochladen", type=["jpg", "jpeg", "png", "webp"], key="photo_up", max_upload_size=10,
                           label_visibility="collapsed")
     # Sofort übernehmen (kein zweiter Klick); file_id verhindert erneutes Verarbeiten beim nächsten Durchlauf
     if up is not None and st.session_state.get("photo_done") != up.file_id:
@@ -449,7 +449,7 @@ def _wishes(d: dict, new: dict, stored: dict) -> None:
         else:
             st.caption("Noch keine Unterschrift.")
     with c2:
-        up = st.file_uploader("Scan/Foto der Unterschrift", type=["png", "jpg", "jpeg"], key="sig_up",
+        up = st.file_uploader("Scan/Foto der Unterschrift", type=["png", "jpg", "jpeg"], key="sig_up", max_upload_size=10,
                               label_visibility="collapsed")
         if up is not None and st.session_state.get("sig_done") != up.file_id:
             try:
@@ -495,7 +495,7 @@ def _cv_import(stored: dict) -> None:
     st.caption("Lade deinen vorhandenen Lebenslauf hoch. SmartResume liest ihn aus und trägt Kontaktdaten, "
                "Werdegang, Ausbildung, Skills und Sprachen in die Bereiche dieses Profils ein – du prüfst danach nur "
                "noch und ergänzt, was fehlt. Kein Lebenslauf zur Hand? Dann die Bereiche einfach selbst ausfüllen.")
-    f = st.file_uploader("Lebenslauf (PDF, DOCX oder TXT)", type=["pdf", "docx", "txt"], key="cv_upload")
+    f = st.file_uploader("Lebenslauf (PDF, DOCX oder TXT)", type=["pdf", "docx", "txt"], key="cv_upload", max_upload_size=10)
     has_data = bool(st.session_state.draft["experience"] or st.session_state.draft["education"])
     mode = st.radio("Dein Profil enthält schon Daten. Was soll mit ihnen passieren?", MODES, key="cv_mode") \
         if has_data else MODES[1]
@@ -572,12 +572,13 @@ def _cv_manual(m: dict) -> None:
 
 def _backup(stored: dict) -> None:
     st.markdown("##### Profil sichern & übertragen")
-    st.caption("Sichert dein komplettes Profil als Datei – z. B. für einen anderen Rechner.")
+    st.caption("Sichert dein Profil als Datei – z. B. für einen anderen Rechner. Eine komplette Sicherung mit Foto, "
+               "Unterschrift und allen Bewerbungen gibt es unter **Einstellungen → Daten & Sicherung**.")
     c1, c2 = st.columns(2)
     c1.download_button("Profil als Datei sichern", json.dumps(stored["data"], ensure_ascii=False, indent=2),
                        file_name="profil.json", mime="application/json", use_container_width=True,
                        icon=":material/download:")
-    jf = c2.file_uploader("Gesicherte Profil-Datei laden", type=["json"], key="json_upload")
+    jf = c2.file_uploader("Gesicherte Profil-Datei laden", type=["json"], key="json_upload", max_upload_size=10)
     if jf is not None and c2.button("Profil-Datei übernehmen", use_container_width=True, icon=":material/upload:"):
         try:
             raw = json.loads(jf.getvalue().decode("utf-8"))

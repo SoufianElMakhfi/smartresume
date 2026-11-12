@@ -111,7 +111,7 @@ def server_args(port: int) -> list[str]:
         "--server.port", str(port),
         "--server.address", "127.0.0.1",   # nur dieser PC, keine Firewall-Abfrage
         "--server.headless", "true",
-        "--server.maxUploadSize", "10",
+        "--server.maxUploadSize", "200",   # nur für Sicherungen; andere Felder: 10 MB
         "--server.fileWatcherType", "none",
         "--browser.gatherUsageStats", "false",
         "--global.developmentMode", "false",

@@ -653,3 +653,13 @@ def test_local_mode_is_single_user_friendly(env, monkeypatch):
     _btn(at2, "Weiter").click()
     _run(at2)
     assert "KI einrichten" in [b.label for b in at2.button]
+
+
+def test_settings_backup_section(env):
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _btn(at, "Einstellungen").click()
+    _run(at)
+    assert any(s.value == "Daten & Sicherung" for s in at.subheader)
+    _btn(at, "Sicherung erstellen").click()
+    _run(at)
+    assert at.session_state.backup_zip[:2] == b"PK"                 # ZIP liegt zum Herunterladen bereit

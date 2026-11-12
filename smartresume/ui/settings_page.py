@@ -1,9 +1,12 @@
-"""Einstellungen: Standardmodell, E-Mail-Versand, Konto."""
+"""Einstellungen: Standardmodell, E-Mail-Versand, Daten & Sicherung, Konto."""
 from __future__ import annotations
+
+import os
+import sys
 
 import streamlit as st
 
-from .. import auth, db, mailer
+from .. import auth, backup, db, mailer, paths
 from .common import available_models, branding, fmt_tokens, uid
 
 
@@ -30,6 +33,7 @@ def render() -> None:
     st.caption(f"Bisher verbraucht: {fmt_tokens(db.user_token_total(uid()))} Tokens")
 
     _mail_section(settings)
+    _data_section()
 
     st.subheader("Konto")
     how = ("dein Konto auf diesem PC – du bleibst angemeldet, bis du dich abmeldest" if auth.local_mode()
@@ -106,3 +110,50 @@ def _mail_section(settings: dict) -> None:
         st.caption("Das Passwort bleibt auf diesem PC – verschlüsselt und nur mit deinem Windows-Konto lesbar – und wird nur zum "
                    "Versenden deiner Bewerbungen benutzt. Ein App-Passwort kannst du jederzeit beim Anbieter "
                    "widerrufen.")
+
+
+def _data_section() -> None:
+    st.subheader("Daten & Sicherung")
+    if auth.local_mode():
+        folder = paths.real_home_dir()
+        st.write("Alles, was du in SmartResume anlegst, bleibt auf diesem PC – in diesem Ordner:")
+        st.code(str(folder), language=None, wrap_lines=True)
+        if sys.platform == "win32" and st.button("Ordner öffnen", icon=":material/folder_open:"):
+            folder.mkdir(parents=True, exist_ok=True)
+            os.startfile(folder)  # noqa: S606 – fester Pfad, kein Nutzereingabe
+        if paths.packaged():
+            st.warning("**Wichtig:** Beim Deinstallieren von SmartResume löscht Windows diesen Ordner. Lade vorher "
+                       "eine Sicherung herunter – damit kommt alles zurück, auch auf einem neuen PC.",
+                       icon=":material/warning:")
+    st.caption("Die Sicherung enthält dein Profil (mit Foto und Unterschrift), deine Einstellungen und alle "
+               "Bewerbungen samt PDF. Nicht enthalten sind Passwörter und KI-Keys.")
+    c1, c2 = st.columns(2)
+    if c1.button("Sicherung erstellen", use_container_width=True, icon=":material/inventory_2:"):
+        st.session_state.backup_zip = backup.export_user(uid())
+    if st.session_state.get("backup_zip"):
+        c2.download_button("Sicherung herunterladen", st.session_state.backup_zip, file_name=backup.filename(),
+                           mime="application/zip", use_container_width=True, type="primary",
+                           icon=":material/download:", on_click="ignore")
+
+    with st.expander("Sicherung wiederherstellen", icon=":material/restore:"):
+        up = st.file_uploader("Sicherungsdatei (ZIP)", type=["zip"], key="backup_up",
+                              max_upload_size=backup.MAX_BYTES // (1024 * 1024))
+        if up is None:
+            return
+        data = up.getvalue()
+        try:
+            info = backup.read_backup(data)
+        except backup.BackupError as e:
+            st.error(str(e), icon=":material/error:")
+            return
+        when = info["created"].replace("T", " ")[:16]
+        st.write(f"Sicherung vom **{when}**" + (f" · Profil **{info['name']}**" if info["name"] else "")
+                 + f" · **{info['applications']}** Bewerbung(en)")
+        st.warning("Ersetzt dein aktuelles Profil, deine Einstellungen und alle Bewerbungen in diesem Konto.",
+                   icon=":material/warning:")
+        if st.button("Jetzt wiederherstellen", type="primary", icon=":material/restore:"):
+            backup.import_user(uid(), data)
+            st.session_state.draft_uid = None          # Profilseite lädt neu
+            st.session_state.pop("backup_zip", None)
+            st.toast("Sicherung wiederhergestellt.", icon=":material/check:")
+            st.rerun()

@@ -1,6 +1,6 @@
 [server]
 headless = true
-maxUploadSize = 10
+maxUploadSize = 200   # nur für Sicherungen; die übrigen Upload-Felder begrenzen auf 10 MB
 
 [browser]
 gatherUsageStats = false
