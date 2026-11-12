@@ -3,7 +3,7 @@
     pip install -r requirements.txt pyinstaller
     python build_exe.py
 
-Die .exe legt beim Start ihre Daten (data/, .env) im selben Ordner an, in dem sie liegt.
+Die .exe öffnet ein eigenes Fenster und legt ihre Daten (data/, .env, logs/) im selben Ordner an, in dem sie liegt.
 Für das Store-Paket baut build_msix.py mit pyinstaller_args(onefile=False) einen Programmordner.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ def pyinstaller_args(onefile: bool = True) -> list[str]:
         "launcher.py",
         "--name", "SmartResume",
         "--onefile" if onefile else "--onedir",
-        "--console",            # Fenster zeigt Adresse/Hinweise; Schließen beendet die App
+        "--windowed",           # eigenes App-Fenster (pywebview), keine Konsole; Protokoll in logs/
         "--icon", os.path.join("packaging", "icon.ico"),
         "--noconfirm",
         "--clean",
@@ -43,6 +43,8 @@ def pyinstaller_args(onefile: bool = True) -> list[str]:
         "--hidden-import", "bs4",
         "--hidden-import", "PIL",
         "--hidden-import", "pandas",
+        "--collect-all", "webview",
+        "--hidden-import", "clr",
     ]
 
 

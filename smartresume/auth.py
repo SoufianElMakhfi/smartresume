@@ -97,6 +97,14 @@ def local_mode() -> bool:
     return os.environ.get("SMARTRESUME_LOCAL") == "1"
 
 
+def local_access_ok(given: str) -> bool:
+    """Lokal: Der Launcher erzeugt bei jedem Start ein geheimes Token und öffnet die App mit ?k=<token>.
+    Nur wer es kennt (das eigene App-Fenster), darf sich anmelden – nicht andere Windows-Konten auf demselben PC
+    und keine Webseite, die 127.0.0.1 anspricht. Ohne Token (z. B. `streamlit run`) keine Prüfung."""
+    expected = os.environ.get("SMARTRESUME_LOCAL_TOKEN", "")
+    return not expected or secrets.compare_digest(str(given or "").encode(), expected.encode())
+
+
 def session_ttl() -> int:
     return LOCAL_SESSION_TTL if local_mode() else SESSION_TTL
 

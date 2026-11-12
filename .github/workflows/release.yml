@@ -28,7 +28,8 @@ jobs:
       - name: EXE bauen
         run: python build_exe.py
       - name: EXE-Selbsttest (Module, PDF, Startseite)
-        run: dist\SmartResume.exe --selftest
+        shell: pwsh
+        run: ./packaging/selftest.ps1 dist\SmartResume.exe
       - name: An Release anhängen
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
@@ -54,7 +55,8 @@ jobs:
           $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "" }
           if ($version) { python build_msix.py --version $version } else { python build_msix.py }
       - name: Selbsttest (Programm aus dem Paket)
-        run: build\msix\stage\SmartResume\SmartResume.exe --selftest
+        shell: pwsh
+        run: ./packaging/selftest.ps1 build\msix\stage\SmartResume\SmartResume.exe
       - uses: actions/upload-artifact@v6
         with:
           name: SmartResume-msix

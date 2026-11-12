@@ -94,3 +94,11 @@ def test_send_via_smtp(monkeypatch):
     assert sent["host"] == ("smtp.example.com", 587) and sent["tls"] and sent["login"] == ("bot@example.com", "pw")
     assert msg["Subject"].startswith("654321") and msg["To"] == "a@example.com" and msg["From"] == "bot@example.com"
     assert link in msg.get_body(("plain",)).get_content()
+
+
+def test_local_access_token(monkeypatch):
+    monkeypatch.delenv("SMARTRESUME_LOCAL_TOKEN", raising=False)
+    assert auth.local_access_ok("")                       # ohne Token (streamlit run) keine Prüfung
+    monkeypatch.setenv("SMARTRESUME_LOCAL_TOKEN", "abc")
+    assert auth.local_access_ok("abc")
+    assert not auth.local_access_ok("") and not auth.local_access_ok("abd")

@@ -244,7 +244,10 @@ def _login() -> None:
         st.caption(BR["tagline"])
     if err := st.session_state.pop("login_error", None):
         st.error(err)
-    if auth.local_mode():
+    if auth.local_mode() and not auth.local_access_ok(st.query_params.get("k", "")):
+        st.info("Bitte öffne SmartResume über das Startmenü bzw. die SmartResume-Verknüpfung.",
+                icon=":material/lock:")
+    elif auth.local_mode():
         _local_step()
     elif st.session_state.get("login_email"):
         _code_step(st.session_state.login_email)

@@ -621,3 +621,16 @@ def test_local_mode_login_with_email_only(env, monkeypatch):
     _btn(at2, "Weiter").click()
     _run(at2)
     assert at2.session_state.user["id"] != user["id"] and not at2.session_state.user["is_admin"]
+
+
+def test_local_mode_needs_launch_token(env, monkeypatch):
+    """Lokal kommt nur das eigene App-Fenster (mit Start-Token) ins Login – nicht andere Windows-Konten."""
+    monkeypatch.setenv("SMARTRESUME_LOCAL", "1")
+    monkeypatch.setenv("SMARTRESUME_LOCAL_TOKEN", "geheim-123")
+    at = _run(AppTest.from_file(APP, default_timeout=60))
+    assert not any(t.label == "Deine E-Mail-Adresse" for t in at.text_input)
+    assert any("Startmenü" in i.value for i in at.info)
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["k"] = "geheim-123"
+    _run(at)
+    assert any(t.label == "Deine E-Mail-Adresse" for t in at.text_input)

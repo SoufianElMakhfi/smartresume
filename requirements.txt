@@ -7,5 +7,7 @@ pypdf>=4.0
 python-docx>=1.1
 pillow>=10.0
 pandas
+# Eigenes App-Fenster (WebView2) unter Windows – ohne pywebview öffnet sich der Browser
+pywebview>=6.0; sys_platform == "win32"
 # PDF-Rendering: Typst-CLI (winget/apt) oder als Fallback das Python-Paket
 typst>=0.12
