@@ -49,6 +49,12 @@ def _nbsp_units(s: str) -> str:
 
 
 def find_typst() -> str | None:
+    """Pfad zur Typst-CLI – oder None, dann rendert das mitgelieferte Python-Paket.
+    Im fertigen Programm (.exe/Store) immer das mitgelieferte Paket: Eine andere, zufällig installierte
+    Typst-Version könnte die Vorlage anders setzen oder gar nicht übersetzen."""
+    from . import paths
+    if paths.frozen():
+        return None
     exe = shutil.which("typst")
     if exe:
         return exe

@@ -107,6 +107,8 @@ def main() -> int:
         "--server.fileWatcherType", "none",
         "--browser.gatherUsageStats", "false",
         "--global.developmentMode", "false",
+        "--client.toolbarMode", "viewer",   # kein „Deploy“-Knopf / Entwicklermenü
+        "--theme.primaryColor", "#0F5F6E",  # Petrol statt Streamlit-Rot
         "--logger.level", "error",          # Konsole ruhig halten
     ]
     return stcli.main()

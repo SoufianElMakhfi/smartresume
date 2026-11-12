@@ -5,5 +5,11 @@ maxUploadSize = 10
 [browser]
 gatherUsageStats = false
 
+[client]
+toolbarMode = "viewer"     # kein „Deploy“-Knopf / Entwicklermenü
+
+[theme]
+primaryColor = "#0F5F6E"   # Petrol (wie die PDFs)
+
 # Port bei Hostern (Railway/Render …) per Startbefehl setzen:
 #   streamlit run app.py --server.port $PORT
