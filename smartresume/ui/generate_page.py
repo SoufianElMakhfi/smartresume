@@ -8,7 +8,7 @@ from datetime import date
 
 import streamlit as st
 
-from .. import ats, bridge, db, generate, llm, mailer, quality, render
+from .. import ats, auth, bridge, db, generate, llm, mailer, quality, render
 from ..profile import EMPLOYMENT_TYPES, add_skills, default_employment_type, is_profile_usable
 from ..scrape import ScrapeError, scrape_url
 from .common import (branding, chat_bridge, check_limit, fallback_chain, fmt_tokens, go, model_picker,
@@ -65,7 +65,7 @@ def _input() -> None:
                 "eigenen **Gemini**- oder **ChatGPT**-Konto: SmartResume erstellt einen fertigen Auftrag, du fügst "
                 "ihn dort ein und kopierst die Antwort zurück. Daraus entsteht hier das fertige PDF.",
                 icon=":material/info:")
-        if st.session_state.user.get("is_admin") and st.button("Stattdessen KI verbinden – kostenlos, 2 Minuten",
+        if auth.can_configure_ai(st.session_state.user) and st.button("Stattdessen KI verbinden – kostenlos, 2 Minuten",
                                                                icon=":material/key:"):
             go("setup")
     prefs = db.get_user_settings(uid()).get("gen_prefs") or {}

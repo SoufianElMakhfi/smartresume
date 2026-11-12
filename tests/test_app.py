@@ -635,3 +635,21 @@ def test_local_mode_needs_launch_token(env, monkeypatch):
     at.query_params["k"] = "geheim-123"
     _run(at)
     assert any(t.label == "Deine E-Mail-Adresse" for t in at.text_input)
+
+
+def test_local_mode_is_single_user_friendly(env, monkeypatch):
+    """Lokal (Store-App): keine Admin-/Server-Begriffe, keine Nutzerverwaltung, jedes Konto darf KI einrichten."""
+    monkeypatch.setenv("SMARTRESUME_LOCAL", "1")
+    at = _run(AppTest.from_file(APP, default_timeout=60))
+    assert any("Willkommen" in s.value for s in at.subheader)
+    assert not any("Administrator" in m.value for m in at.markdown)
+    next(t for t in at.text_input if t.label == "Deine E-Mail-Adresse").input("lena@example.com")
+    _btn(at, "Weiter").click()
+    _run(at)
+    labels = [b.label for b in at.button]
+    assert "Verwaltung" not in labels and "KI einrichten" in labels
+    at2 = _run(AppTest.from_file(APP, default_timeout=60))   # zweites Konto am selben PC
+    next(t for t in at2.text_input if t.label == "Deine E-Mail-Adresse").input("tom@example.com")
+    _btn(at2, "Weiter").click()
+    _run(at2)
+    assert "KI einrichten" in [b.label for b in at2.button]

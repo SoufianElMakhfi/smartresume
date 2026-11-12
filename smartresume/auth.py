@@ -105,6 +105,11 @@ def local_access_ok(given: str) -> bool:
     return not expected or secrets.compare_digest(str(given or "").encode(), expected.encode())
 
 
+def can_configure_ai(user: dict | None) -> bool:
+    """KI-Keys einrichten: auf dem Server nur Admins, lokal jedes Konto (es ist ja der eigene PC)."""
+    return bool(user) and (bool(user.get("is_admin")) or local_mode())
+
+
 def session_ttl() -> int:
     return LOCAL_SESSION_TTL if local_mode() else SESSION_TTL
 

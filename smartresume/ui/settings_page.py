@@ -23,8 +23,10 @@ def render() -> None:
         st.caption("Sind die Kontingente aufgebraucht, wechselt die App automatisch zum nächsten Modell und "
                    "zuletzt zu Gemini/ChatGPT per Kopieren & Einfügen.")
     else:
-        st.caption("Auf diesem Server ist keine KI-API eingerichtet. Bewerbungen entstehen über dein eigenes "
-                   "Gemini- oder ChatGPT-Konto (Kopieren & Einfügen) – kostenlos.")
+        where = ("Noch keine KI verbunden (unter „KI einrichten“ geht das kostenlos in 2 Minuten)."
+                 if auth.local_mode() else "Auf diesem Server ist keine KI-API eingerichtet.")
+        st.caption(f"{where} Bewerbungen entstehen bis dahin über dein eigenes Gemini- oder ChatGPT-Konto "
+                   "(Kopieren & Einfügen) – kostenlos.")
     st.caption(f"Bisher verbraucht: {fmt_tokens(db.user_token_total(uid()))} Tokens")
 
     _mail_section(settings)
@@ -33,7 +35,7 @@ def render() -> None:
     how = ("dein Konto auf diesem PC – du bleibst angemeldet, bis du dich abmeldest" if auth.local_mode()
            else "Anmeldung per E-Mail-Code, kein Passwort nötig")
     st.write(f"Angemeldet als **{st.session_state.user['email']}** – {how}.")
-    if st.button("Auf allen Geräten abmelden"):
+    if not auth.local_mode() and st.button("Auf allen Geräten abmelden"):
         auth.end_all_sessions(uid())
         st.session_state.clear()
         st.session_state.clear_cookie = True

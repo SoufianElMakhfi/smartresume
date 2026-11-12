@@ -8,7 +8,7 @@ import json
 
 import streamlit as st
 
-from .. import bridge, cv_import, db, llm
+from .. import auth, bridge, cv_import, db, llm
 from ..profile import empty_profile, from_legacy_master, is_profile_usable, normalize_profile
 from ..render import prepare_photo, prepare_signature
 from .common import (branding, chat_bridge, fallback_chain, fmt_tokens, go, model_picker, notify_switch,
@@ -546,7 +546,7 @@ def _no_ai_hint() -> None:
     st.info("**Es ist noch keine KI verbunden.** Das Auslesen funktioniert trotzdem – über dein eigenes, kostenloses "
             "Gemini- oder ChatGPT-Konto: SmartResume erstellt einen fertigen Auftrag, du fügst ihn dort ein und "
             "kopierst die Antwort zurück. Das dauert etwa eine Minute.", icon=":material/info:")
-    if st.session_state.user.get("is_admin") and st.button(
+    if auth.can_configure_ai(st.session_state.user) and st.button(
             "Stattdessen KI verbinden – dann läuft das Auslesen automatisch", icon=":material/key:"):
         go("setup")
 

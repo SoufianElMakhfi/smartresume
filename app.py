@@ -143,7 +143,7 @@ def _complete_login(email: str) -> None:
             prof["personal"]["email"] = email
             db.save_profile(user["id"], data=prof)
         page = "profile"                                     # neue Nutzer starten beim Profil
-        if first and not _any_ai_key():
+        if (first or auth.local_mode()) and not _any_ai_key():
             page = "setup"                                   # Ersteinrichtung: zuerst kostenlose KI verbinden
     for k in _LOGIN_KEYS:
         st.session_state.pop(k, None)
@@ -237,7 +237,10 @@ def _login() -> None:
         _write_cookie("")
     _logo()
     setup = db.needs_setup()
-    if setup:
+    if setup and auth.local_mode():
+        st.subheader("Willkommen bei SmartResume")
+        st.write("Schön, dass du da bist. Gib deine E-Mail-Adresse ein – dann geht's los.")
+    elif setup:
         st.subheader("Ersteinrichtung")
         st.write("Melde dich mit deiner E-Mail an – dieses erste Konto erhält Administratorrechte.")
     elif BR["tagline"]:
@@ -270,8 +273,9 @@ def _main() -> None:
              "profile": ("Mein Profil", ":material/person:"),
              "tracking": ("Meine Bewerbungen", ":material/folder_open:"),
              "settings": ("Einstellungen", ":material/settings:")}
-    if user["is_admin"]:
+    if auth.can_configure_ai(user):
         pages["setup"] = ("KI einrichten", ":material/key:")
+    if user["is_admin"] and not auth.local_mode():          # Nutzerverwaltung nur beim Betrieb als Server
         pages["admin"] = ("Verwaltung", ":material/admin_panel_settings:")
     st.session_state.setdefault("page", "generate")
     if st.session_state.page not in pages:
