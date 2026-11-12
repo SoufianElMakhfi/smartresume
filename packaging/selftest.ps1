@@ -1,4 +1,4 @@
-# Selbsttest der gebauten SmartResume.exe. Die .exe ist ein Fenster-Programm (keine Konsole) – deshalb mit
+﻿# Selbsttest der gebauten SmartResume.exe. Die .exe ist ein Fenster-Programm (keine Konsole) – deshalb mit
 # Start-Process -Wait starten und die Ausgabe über eine Datei holen.
 #   ./packaging/selftest.ps1 dist\SmartResume.exe
 param([Parameter(Mandatory)][string]$Exe)

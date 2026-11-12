@@ -1,4 +1,4 @@
-# Installiert das gebaute Store-Paket (build\msix\stage) als Entwickler-App – ohne Signatur – und startet es.
+﻿# Installiert das gebaute Store-Paket (build\msix\stage) als Entwickler-App – ohne Signatur – und startet es.
 # So läuft SmartResume genau wie aus dem Store (Paket-Identität, Daten im Paketordner, schreibgeschützter
 # Programmordner) und lässt sich vor dem Einreichen testen.
 #

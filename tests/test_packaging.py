@@ -29,3 +29,12 @@ def test_third_party_licenses_cover_bundled_libraries():
     for pkg in ("streamlit", "pywebview", "typst", "pandas", "requests"):
         assert f"\n{pkg} " in text.split("Übersicht", 1)[1], pkg
     assert "Apache License" in text                         # Lizenz-/NOTICE-Texte sind mit drin
+
+
+def test_powershell_scripts_with_umlauts_have_bom():
+    """Windows PowerShell 5.1 liest UTF-8 ohne BOM als ANSI – „–“ oder „ü“ zerbrechen dann das Skript."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    for f in (root / "packaging").glob("*.ps1"):
+        data = f.read_bytes()
+        assert data.isascii() or data.startswith(b"\xef\xbb\xbf"), f"{f.name} braucht UTF-8 mit BOM"
