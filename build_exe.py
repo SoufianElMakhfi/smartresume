@@ -13,10 +13,13 @@ import sys
 
 import PyInstaller.__main__
 
+import build_licenses
+
 SEP = os.pathsep  # ";" unter Windows, ":" sonst
 
 
 def pyinstaller_args(onefile: bool = True) -> list[str]:
+    licenses = build_licenses.write()          # Lizenzen aller gebündelten Bibliotheken (Hilfe & Info)
     return [
         "launcher.py",
         "--name", "SmartResume",
@@ -31,6 +34,7 @@ def pyinstaller_args(onefile: bool = True) -> list[str]:
         "--add-data", f"icons{SEP}icons",
         "--add-data", f"LICENSE{SEP}.",
         "--add-data", f"PRIVACY.md{SEP}.",
+        "--add-data", f"{licenses}{SEP}.",
         "--collect-submodules", "smartresume",
         "--collect-all", "streamlit",
         "--collect-all", "typst",

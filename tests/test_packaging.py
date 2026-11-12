@@ -21,3 +21,11 @@ def test_manifest_uses_store_identity():
 
 def test_source_checkout_is_not_packaged():
     assert not paths.packaged()
+
+
+def test_third_party_licenses_cover_bundled_libraries():
+    import build_licenses
+    text = build_licenses.render()
+    for pkg in ("streamlit", "pywebview", "typst", "pandas", "requests"):
+        assert f"\n{pkg} " in text.split("Übersicht", 1)[1], pkg
+    assert "Apache License" in text                         # Lizenz-/NOTICE-Texte sind mit drin

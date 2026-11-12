@@ -262,7 +262,8 @@ def selftest() -> int:
         assert any("Willkommen" in s.value or "Ersteinrichtung" in s.value for s in at.subheader), \
             "Startseite unvollständig"
         print("Startseite: ok")
-        for name in ("PRIVACY.md", "LICENSE"):
+        names = ["PRIVACY.md", "LICENSE"] + (["THIRD_PARTY_LICENSES.txt"] if getattr(sys, "frozen", False) else [])
+        for name in names:
             assert (paths.app_dir() / name).exists(), f"{name} fehlt im Paket"
         print("Datenschutz/Lizenz: ok")
     print("SELFTEST OK")
