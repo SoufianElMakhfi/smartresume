@@ -4,9 +4,10 @@ Stand: 12. November 2026
 
 ## 1. Verantwortlicher
 
-[VOR- UND NACHNAME]
-[STRASSE UND HAUSNUMMER]
-[PLZ ORT]
+Soufian El Makhfi - Soubasa\
+c/o Autorenglück\
+Albert-Einstein-Straße 47\
+02977 Hoyerswerda\
 E-Mail: mail@soufian.me
 
 ## 2. Das Wichtigste in Kürze
