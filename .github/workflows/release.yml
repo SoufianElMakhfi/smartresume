@@ -1,6 +1,8 @@
-# Baut SmartResume.exe und hängt sie an das GitHub-Release; baut außerdem das Store-Paket (.msix).
-# (Kein zusätzliches Build-Artefakt: Private Repos haben nur 500 MB Artefakt-Speicher, die .exe hat ~140 MB.)
-# Auslösen: Tag pushen, z. B.  git tag v1.0.0 && git push origin v1.0.0
+# Baut und testet SmartResume.exe und baut das Store-Paket (.msix).
+# Die .exe wird bewusst NICHT veröffentlicht: Einziger offizieller Download ist der Microsoft Store
+# (signiert, automatische Updates). Die .exe wird nur gebaut, um den Build zu prüfen.
+# Auslösen: Tag pushen (z. B.  git tag v2.1.1 && git push origin v2.1.1 → MSIX mit Version 2.1.1.0)
+# oder Actions → „Release“ → „Run workflow“.
 name: Release (Windows-EXE)
 
 on:
@@ -9,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-exe:
@@ -30,11 +32,6 @@ jobs:
       - name: EXE-Selbsttest (Module, PDF, Startseite)
         shell: pwsh
         run: ./packaging/selftest.ps1 dist\SmartResume.exe
-      - name: An Release anhängen
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
-        with:
-          files: dist/SmartResume.exe
 
   # Store-Paket für Partner Center. Nur als Download unter „Actions → Lauf → Artifacts“ (7 Tage),
   # wird nicht veröffentlicht – Hochladen und Einreichen passiert von Hand in Partner Center.

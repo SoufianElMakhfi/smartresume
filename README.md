@@ -10,8 +10,8 @@ und Prüfungen wie über die API.
 
 ## Schnellstart
 
-**Windows:** SmartResume aus dem **Microsoft Store** installieren (Store-ID `9NCM7W2JX4DF`) – oder
-`SmartResume.exe` aus den [Releases](../../releases) in einen eigenen Ordner legen und doppelklicken.
+**Windows:** SmartResume aus dem **Microsoft Store** installieren (Store-ID `9NCM7W2JX4DF`). Das ist der einzige
+offizielle Download – die Store-Version ist signiert und aktualisiert sich automatisch.
 
 1. SmartResume öffnet sich in einem **eigenen Fenster** (WebView2, kein Browser, keine Konsole).
    Fenster schließen = SmartResume beenden.
@@ -19,10 +19,8 @@ und Prüfungen wie über die API.
 3. Unter **„KI einrichten“** einen kostenlosen Gemini-Key (optional zusätzlich Groq) einfügen (Link und Anleitung
    stehen dabei), **Testen**, **Speichern** – fertig.
 
-Bei der `.exe` liegen alle Daten (`data/`, `.env`, `logs/`) neben der `.exe`, bei der Store-App im App-Ordner
-von Windows (der genaue Ort steht unter *Einstellungen → Daten & Sicherung*). Keys und Mail-Passwörter sind mit
-Windows-DPAPI verschlüsselt. Hinweis zur `.exe`: Windows SmartScreen kann bei nicht signierten Programmen warnen
-(„Weitere Informationen“ → „Trotzdem ausführen“) – die Store-Version ist signiert.
+Die Store-App speichert alle Daten im App-Ordner von Windows (der genaue Ort steht unter
+*Einstellungen → Daten & Sicherung*). Keys und Mail-Passwörter sind mit Windows-DPAPI verschlüsselt.
 
 **Aus dem Quellcode (Windows, macOS, Linux):** Python 3.11+ installieren, dann unter Windows
 `SmartResume starten.bat` doppelklicken – oder:
@@ -138,8 +136,8 @@ pip install pyinstaller && python build_exe.py   # baut dist/SmartResume.exe (Fe
 dem Fenster endet. `SMARTRESUME_NO_BROWSER=1` startet nur den Server (gibt die Adresse mit Token aus), Protokoll:
 `logs/smartresume.log`. `build_licenses.py` erzeugt beim Build die Lizenzhinweise aller gebündelten Bibliotheken.
 
-Ein Tag `v*` (z. B. `git tag v1.0.0 && git push origin v1.0.0`) baut die `.exe` per GitHub Actions und hängt
-sie an das Release.
+Ein Tag `v*` (z. B. `git tag v2.1.1 && git push origin v2.1.1`) baut per GitHub Actions die `.exe` (nur zum
+Testen, wird nicht veröffentlicht) und das Store-Paket mit dieser Version. Offizieller Download ist nur der Store.
 
 ### Microsoft Store (MSIX)
 
