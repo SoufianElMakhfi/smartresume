@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from smartresume import config, paths
+from smartresume import config, secret, paths
 
 
 @pytest.fixture
@@ -28,7 +28,9 @@ def test_save_values_keeps_other_lines_and_applies_immediately(home):
     config.save_values({"GEMINI_API_KEY": "neu", "MISTRAL_API_KEY": " m-123 "})
     text = (home / ".env").read_text(encoding="utf-8")
     assert "# Kommentar" in text and "SMTP_HOST=smtp.example.com" in text
-    assert "GEMINI_API_KEY=neu" in text and "MISTRAL_API_KEY=m-123" in text and "alt" not in text
+    stored = {ln.split("=", 1)[0]: ln.split("=", 1)[1] for ln in text.splitlines() if "=" in ln}
+    assert secret.reveal(stored["GEMINI_API_KEY"]) == "neu" and secret.reveal(stored["MISTRAL_API_KEY"]) == "m-123"
+    assert "=alt" not in text
     assert os.environ["GEMINI_API_KEY"] == "neu" and os.environ["MISTRAL_API_KEY"] == "m-123"
     config.save_values({"GEMINI_API_KEY": ""})                 # leer = entfernen
     assert "GEMINI_API_KEY" not in (home / ".env").read_text(encoding="utf-8")

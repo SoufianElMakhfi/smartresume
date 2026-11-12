@@ -251,7 +251,10 @@ def selftest() -> int:
         assert pdf[:4] == b"%PDF" and render.count_pages(pdf) >= 3, "PDF unvollständig"
         print(f"PDF: ok ({render.count_pages(pdf)} Seiten)")
 
-        from smartresume import paths
+        from smartresume import paths, secret
+        assert secret.reveal(secret.protect("test-123")) == "test-123", "Verschlüsselung defekt"
+        print("Verschlüsselung: ok")
+
         from streamlit.testing.v1 import AppTest
         at = AppTest.from_file(str(paths.app_dir() / "app.py"), default_timeout=60)
         at.run()

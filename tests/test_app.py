@@ -413,7 +413,8 @@ def test_first_run_without_key_opens_setup_and_saves_key(env, monkeypatch):
     assert any("Funktioniert" in m.value for m in at.success)  # Test-Aufruf über das (Fake-)Modell
     _btn(at, "Speichern").click()
     _run(at)
-    assert "GEMINI_API_KEY=AIza-test-123" in (env["tmp"] / ".env").read_text(encoding="utf-8")
+    env_text = (env["tmp"] / ".env").read_text(encoding="utf-8")
+    assert "GEMINI_API_KEY=" in env_text and "AIza-test-123" not in env_text   # verschlüsselt gespeichert
     assert config.is_set("GEMINI_API_KEY")
     _btn(at, "Neue Bewerbung").click()
     _run(at)

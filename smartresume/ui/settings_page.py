@@ -101,6 +101,6 @@ def _mail_section(settings: dict) -> None:
             settings.pop("mail", None)
             db.save_user_settings(uid(), settings)
             st.rerun()
-        st.caption("Das Passwort wird nur lokal auf diesem Rechner gespeichert (data/smartresume.db) und nur zum "
+        st.caption("Das Passwort bleibt auf diesem PC – verschlüsselt und nur mit deinem Windows-Konto lesbar – und wird nur zum "
                    "Versenden deiner Bewerbungen benutzt. Ein App-Passwort kannst du jederzeit beim Anbieter "
                    "widerrufen.")

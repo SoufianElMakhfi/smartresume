@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from . import paths
+from . import paths, secret
 from .profile import empty_profile, normalize_profile
 
 
@@ -101,6 +101,13 @@ CREATE TABLE IF NOT EXISTS sessions (
 def init_db(path: Path | None = None) -> None:
     with connect(path) as con:
         con.executescript(SCHEMA)
+        if secret.available():                                    # alte Klartext-Mail-Passwörter verschlüsseln
+            for row in con.execute("SELECT id, settings FROM users WHERE settings LIKE '%\"password\"%'").fetchall():
+                s = _load_settings(row["settings"])
+                mail = s.get("mail")
+                if isinstance(mail, dict) and mail.get("password") and not mail["password"].startswith(secret.PREFIX):
+                    mail["password"] = secret.protect(mail["password"])
+                    con.execute("UPDATE users SET settings=? WHERE id=?", (json.dumps(s), row["id"]))
 
 
 def _now() -> str:
@@ -205,10 +212,17 @@ def _load_settings(raw: str | None) -> dict:
 def get_user_settings(user_id: int, path=None) -> dict:
     with connect(path) as con:
         row = con.execute("SELECT settings FROM users WHERE id=?", (user_id,)).fetchone()
-    return _load_settings(row["settings"] if row else None)
+    settings = _load_settings(row["settings"] if row else None)
+    mail = settings.get("mail")
+    if isinstance(mail, dict) and mail.get("password"):        # liegt verschlüsselt in der DB (secret.py)
+        settings["mail"] = {**mail, "password": secret.reveal(mail["password"])}
+    return settings
 
 
 def save_user_settings(user_id: int, settings: dict, path=None) -> None:
+    mail = settings.get("mail")
+    if isinstance(mail, dict) and mail.get("password"):
+        settings = {**settings, "mail": {**mail, "password": secret.protect(mail["password"])}}
     with connect(path) as con:
         con.execute("UPDATE users SET settings=? WHERE id=?", (json.dumps(settings), user_id))
 

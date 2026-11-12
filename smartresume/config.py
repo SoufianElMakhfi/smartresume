@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import re
 
-from . import paths
+from . import paths, secret
 
 # Kostenlose Anbieter zuerst – das sind die, die die Einrichtungsseite prominent zeigt.
 PROVIDERS = [
@@ -32,18 +32,28 @@ _from_file: set[str] = set()   # Variablen, die aus .env stammen (dürfen übers
 
 
 def load_env() -> None:
-    """Umgebungsvariablen > .env.local > .env (ohne Zusatzabhängigkeit)."""
+    """Umgebungsvariablen > .env.local > .env (ohne Zusatzabhängigkeit).
+    Keys/Passwörter stehen verschlüsselt in .env (secret.py); alte Klartext-Einträge werden dabei verschlüsselt."""
     for name in (".env.local", ".env"):
         p = paths.home_dir() / name
         if not p.exists():
             continue
+        plain: dict[str, str] = {}
         for line in p.read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.lstrip().startswith("#"):
                 k, v = line.split("=", 1)
                 k, v = k.strip(), v.strip().strip('"').strip("'")
+                if v and secret.is_secret_name(k) and not v.startswith(secret.PREFIX):
+                    plain[k] = v
+                v = secret.reveal(v)
                 if k not in os.environ:
                     os.environ[k] = v
                     _from_file.add(k)
+        if plain and name == ".env" and secret.available():
+            try:
+                _write_env(p, plain)
+            except OSError:
+                pass
 
 
 def is_set(env: str) -> bool:
@@ -55,12 +65,11 @@ def set_externally(env: str) -> bool:
     return is_set(env) and env not in _from_file
 
 
-def save_values(values: dict[str, str]) -> None:
-    """Schreibt Werte in .env (vorhandene Zeilen und Kommentare bleiben erhalten) und
-    übernimmt sie sofort in die laufende App. Leerer Wert = Eintrag entfernen."""
-    path = paths.env_file()
+def _write_env(path, values: dict[str, str]) -> None:
+    """Setzt Einträge in einer .env-Datei (Keys/Passwörter verschlüsselt); andere Zeilen bleiben erhalten."""
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     todo = {k: (v or "").strip() for k, v in values.items()}
+    todo = {k: secret.protect(v) if secret.is_secret_name(k) else v for k, v in todo.items()}
     out = []
     for line in lines:
         m = _LINE.match(line)
@@ -73,6 +82,12 @@ def save_values(values: dict[str, str]) -> None:
     out += [f"{k}={v}" for k, v in todo.items() if v]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(out).strip() + "\n", encoding="utf-8")
+
+
+def save_values(values: dict[str, str]) -> None:
+    """Schreibt Werte in .env (vorhandene Zeilen und Kommentare bleiben erhalten) und
+    übernimmt sie sofort in die laufende App. Leerer Wert = Eintrag entfernen."""
+    _write_env(paths.env_file(), values)
     for k, v in values.items():
         v = (v or "").strip()
         if v:

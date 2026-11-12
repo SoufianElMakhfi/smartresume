@@ -1,6 +1,6 @@
 """KI einrichten (nur Admins): kostenlose API-Keys eintragen, testen, speichern.
 
-Die Keys landen in der Datei .env neben dem Programm (lokal auf der Festplatte) und gelten
+Die Keys landen verschlüsselt (Windows-DPAPI, secret.py) in der lokalen .env und gelten
 für alle Nutzer dieser Installation. Ohne Key funktioniert die App weiter über den Abo-Modus.
 """
 from __future__ import annotations
@@ -48,7 +48,7 @@ def render() -> None:
     st.write("Mit einem **kostenlosen** API-Key schreibt die KI deine Bewerbungen automatisch. "
              "Ein Key reicht – mit zwei oder drei springt die App automatisch um, wenn ein Kontingent leer ist.")
     st.caption("Ohne Key funktioniert SmartResume trotzdem: dann über dein Gemini- oder ChatGPT-Konto per "
-               "Kopieren & Einfügen. Die Keys werden nur lokal in der Datei `.env` neben dem Programm gespeichert.")
+               "Kopieren & Einfügen. Die Keys bleiben auf diesem PC – verschlüsselt und nur mit deinem Windows-Konto lesbar.")
 
     entered: dict[str, str] = {}
     for p in [p for p in config.PROVIDERS if p["free"]]:
