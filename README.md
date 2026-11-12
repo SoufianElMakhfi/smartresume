@@ -10,17 +10,19 @@ und Prüfungen wie über die API.
 
 ## Schnellstart
 
-**Windows – eine Datei, nichts installieren:**
+**Windows:** SmartResume aus dem **Microsoft Store** installieren (Store-ID `9NCM7W2JX4DF`) – oder
+`SmartResume.exe` aus den [Releases](../../releases) in einen eigenen Ordner legen und doppelklicken.
 
-1. `SmartResume.exe` aus den [Releases](../../releases) herunterladen, in einen eigenen Ordner legen
-   (z. B. `Dokumente\SmartResume`) und doppelklicken. Der Browser öffnet sich automatisch.
-2. Mit deiner E-Mail anmelden – lokal wird der Code direkt angezeigt.
-3. Unter **„🔑 KI einrichten“** einen kostenlosen Gemini-Key (optional zusätzlich Groq) einfügen (Link und Anleitung
+1. SmartResume öffnet sich in einem **eigenen Fenster** (WebView2, kein Browser, keine Konsole).
+   Fenster schließen = SmartResume beenden.
+2. Mit deiner E-Mail-Adresse anmelden – lokal ohne Code und ohne Passwort.
+3. Unter **„KI einrichten“** einen kostenlosen Gemini-Key (optional zusätzlich Groq) einfügen (Link und Anleitung
    stehen dabei), **Testen**, **Speichern** – fertig.
 
-Alle Daten (`data/`, `.env` mit den Keys) liegen neben der `.exe` auf deiner Festplatte. Das schwarze Fenster
-offen lassen; Schließen beendet SmartResume. Hinweis: Windows SmartScreen kann bei neuen, nicht signierten
-Programmen warnen („Weitere Informationen“ → „Trotzdem ausführen“).
+Bei der `.exe` liegen alle Daten (`data/`, `.env`, `logs/`) neben der `.exe`, bei der Store-App im App-Ordner
+von Windows (der genaue Ort steht unter *Einstellungen → Daten & Sicherung*). Keys und Mail-Passwörter sind mit
+Windows-DPAPI verschlüsselt. Hinweis zur `.exe`: Windows SmartScreen kann bei nicht signierten Programmen warnen
+(„Weitere Informationen“ → „Trotzdem ausführen“) – die Store-Version ist signiert.
 
 **Aus dem Quellcode (Windows, macOS, Linux):** Python 3.11+ installieren, dann unter Windows
 `SmartResume starten.bat` doppelklicken – oder:
@@ -33,12 +35,13 @@ python launcher.py                   # oder: streamlit run app.py
 Für die PDF-Erstellung reicht das Python-Paket `typst` (in `requirements.txt`); die Typst-CLI
 (`winget install --id Typst.Typst`, `brew install typst`) wird genutzt, wenn vorhanden.
 
-Die erste E-Mail-Adresse, die sich anmeldet, wird **Admin** und landet direkt bei „KI einrichten“.
+Auf einem Server wird die erste E-Mail-Adresse, die sich anmeldet, **Admin** und landet direkt bei
+„KI einrichten“. Lokal (Fenster-App) gibt es keine Admin-/Nutzerverwaltung – jedes Konto darf die KI einrichten.
 
 ## KI: API mit automatischem Rückfall auf Gemini/ChatGPT
 
 1. **API-Modelle** mit kostenlosen Keys (Gemini, Groq) oder kostenpflichtigen (Mistral, OpenRouter, Claude) – eingetragen in der App unter
-   **„🔑 KI einrichten“** (nur Admins; gespeichert lokal in `.env`). Ist ein Kontingent erschöpft oder ein
+   **„🔑 KI einrichten“** (auf Servern nur Admins; verschlüsselt gespeichert in `.env`). Ist ein Kontingent erschöpft oder ein
    Modell überlastet, springt die App automatisch zum nächsten.
 2. **Abo-Modus**, wenn kein Key eingerichtet ist, alle Kontingente leer sind oder das Tageslimit erreicht
    ist: Die App baut den kompletten Auftrag (Regeln + Profil + Stellenanzeige), der Nutzer klickt
@@ -60,7 +63,9 @@ Lebenslaufdaten. Limits ändern sich häufig; aktuelle Werte stehen in den Konso
 **Lokal** (`SmartResume.exe` bzw. „SmartResume starten.bat“): E-Mail-Adresse eingeben → fertig. Kein Code,
 kein Passwort; man bleibt angemeldet, bis man sich abmeldet. Jede Adresse ist ein eigenes Konto auf diesem PC
 (mehrere Personen können denselben PC nutzen). Das ist sicher, weil der Launcher die App nur unter
-`127.0.0.1` erreichbar macht (`SMARTRESUME_LOCAL=1`).
+`127.0.0.1` erreichbar macht (`SMARTRESUME_LOCAL=1`) und bei jedem Start ein geheimes Start-Token erzeugt
+(`?k=…`, `SMARTRESUME_LOCAL_TOKEN`): Nur das eigene App-Fenster kommt hinein – keine anderen Windows-Konten und
+keine Webseite, die `127.0.0.1` anspricht.
 
 **Auf einem Server** (ohne Launcher):
 1. E-Mail eingeben → **Code senden**
@@ -75,9 +80,14 @@ bei Aufruf über `localhost` direkt an, sonst steht er in der Server-Konsole.
 ## Speicherung
 
 Alles liegt lokal in einer Datei: `data/smartresume.db` (SQLite – Profile, Fotos, Bewerbungen inkl. PDFs,
-Logins). Kein Cloud-Dienst nötig, Backup = diese Datei kopieren. `data/` ist nicht im Git.
-Bei der `.exe` liegt `data/` neben der `.exe`, bei der Store-App unter `%LOCALAPPDATA%\SmartResume`
-(Windows legt das im App-Ordner ab; wird beim Deinstallieren gelöscht).
+Logins). Kein Cloud-Dienst. `data/` ist nicht im Git.
+Bei der `.exe` liegt `data/` neben der `.exe`. Die Store-App schreibt nach `%LOCALAPPDATA%\SmartResume`, was
+Windows nach `%LOCALAPPDATA%\Packages\<Paket>\LocalCache\Local\SmartResume` umleitet – **beim Deinstallieren
+löscht Windows diesen Ordner**. Deshalb gibt es unter *Einstellungen → Daten & Sicherung* eine komplette
+Sicherung als ZIP (Profil, Foto, Unterschrift, Einstellungen, alle Bewerbungen mit PDF) und die
+Wiederherstellung – auch auf einem neuen PC. Passwörter und KI-Keys sind nicht enthalten.
+
+Datenschutzerklärung: [`PRIVACY.md`](PRIVACY.md) (auch in der App unter *Hilfe & Info*).
 
 ## Funktionen
 
@@ -120,8 +130,13 @@ Startbefehl: `streamlit run app.py --server.port $PORT`. Auf Hostern mit flücht
 
 ```bash
 python -m pytest            # Unit-, Render- und UI-Tests (Streamlit AppTest, Fake-KI)
-pip install pyinstaller && python build_exe.py   # baut dist/SmartResume.exe
+pip install pyinstaller && python build_exe.py   # baut dist/SmartResume.exe (Fenster-Programm)
+./packaging/selftest.ps1 dist\SmartResume.exe     # Selbsttest der gebauten .exe (Module, PDF, Startseite)
 ```
+
+`launcher.py` öffnet ein pywebview-Fenster und startet den Streamlit-Server als Unterprozess (`--server`), der mit
+dem Fenster endet. `SMARTRESUME_NO_BROWSER=1` startet nur den Server (gibt die Adresse mit Token aus), Protokoll:
+`logs/smartresume.log`. `build_licenses.py` erzeugt beim Build die Lizenzhinweise aller gebündelten Bibliotheken.
 
 Ein Tag `v*` (z. B. `git tag v1.0.0 && git push origin v1.0.0`) baut die `.exe` per GitHub Actions und hängt
 sie an das Release.
@@ -138,9 +153,11 @@ python build_msix.py --version 2.0.1    # baut dist/SmartResume-2.0.1.0.msix (br
 
 Ohne Windows SDK: GitHub → Actions → „Release“ → „Run workflow“; das `.msix` liegt danach unter
 „Artifacts“. Hochladen in Partner Center unter „Pakete“; jede Einreichung braucht eine höhere Version.
+Texte und Angaben für den Store-Eintrag: [`packaging/STORE_LISTING.md`](packaging/STORE_LISTING.md).
+Vor dem Einreichen als installierte App testen: [`packaging/test_install.ps1`](packaging/test_install.ps1).
 
 Struktur: `launcher.py` (Start der App/.exe), `smartresume/` (Logik: `auth`, `bridge`, `config`, `paths`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`,
-`cv_import`, `scrape`, `jobsearch`, `mailer`, `ats`, `render`, `branding`) und `smartresume/ui/` (Seiten). `template.typ` liest alle Inhalte
+`cv_import`, `scrape`, `jobsearch`, `mailer`, `ats`, `render`, `branding`, `secret` (DPAPI), `backup`) und `smartresume/ui/` (Seiten). `template.typ` liest alle Inhalte
 aus `data.json` – Texte werden nie als Typst-Markup interpretiert. Tests nutzen ein erfundenes Beispielprofil
 (`tests/fixtures/`).
 
@@ -151,4 +168,5 @@ weitergeben ist erlaubt – wer eine veränderte Version weitergibt oder als Onl
 Quellcode dieser Version ebenfalls unter der AGPL veröffentlichen.
 
 Die Schriften in `fonts/` (Lexend, Montserrat, Poppins) stehen unter der SIL Open Font License 1.1
-(Lizenztexte im Ordner).
+(Lizenztexte im Ordner). Die Lizenzen aller mitgelieferten Bibliotheken stehen im fertigen Programm unter
+*Hilfe & Info* (erzeugt von `build_licenses.py`).
