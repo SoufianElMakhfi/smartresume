@@ -27,6 +27,12 @@ st.markdown("""<style>
   [data-testid="stDecoration"], footer, #MainMenu { display: none !important; }
   h1 a, h2 a, h3 a { display: none !important; }
   .block-container { padding-top: 2.2rem; }
+  /* Upload-Feld auf Deutsch (Streamlit kennt nur Englisch); Dateitypen stehen in der Beschriftung */
+  [data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p { font-size: 0; }
+  [data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after {
+    content: "Datei auswählen"; font-size: 0.875rem; }
+  [data-testid="stFileUploaderDropzoneInstructions"] span { font-size: 0; }
+  [data-testid="stFileUploaderDropzoneInstructions"] span::after { content: "oder hierher ziehen"; font-size: 0.875rem; }
 </style>""", unsafe_allow_html=True)
 
 db.init_db()
