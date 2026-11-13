@@ -84,6 +84,8 @@ REGELN:
 - Sprachen NICHT in skills, sondern in "languages".
 - strengths: nur, wenn das Dokument eine Stärke mit konkretem Beleg nennt.
 - Fehlende Angaben: leerer String bzw. leere Liste.
+- Die Werte im Schema unten beschreiben nur, WAS in ein Feld gehört (z. B. "MM/JJJJ", "Jobtitel/Position", "…").
+  Übernimm sie NIE als Wert. Keine Station, kein Eintrag ohne echte Angaben aus dem Lebenslauf.
 Antworte nur mit JSON in exakt diesem Schema (Listen enthalten beliebig viele Einträge dieser Form):
 """ + json.dumps({
     "personal": {"first_name": "Vorname(n)", "last_name": "Nachname inkl. Zusätzen wie von/van/El",

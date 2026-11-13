@@ -200,17 +200,29 @@ def chat_bridge(prompt: str, key: str, validate=None, submit: str = "Antwort üb
     st.caption("Im Eingabefeld von Gemini bzw. ChatGPT mit Strg+V einfügen, abschicken und warten, bis die "
                "Antwort fertig geschrieben ist.")
     st.markdown("**Schritt 3 · Antwort hier einfügen**")
-    with st.form(f"bridge_{key}", border=False):
-        answer = st.text_area("Antwort aus dem Chat", height=160, key=f"bridge_answer_{key}",
-                              label_visibility="collapsed",
-                              placeholder="Unter der Antwort auf das Kopieren-Symbol klicken und hier mit Strg+V "
-                                          "einfügen.")
-        submitted = st.form_submit_button(submit, type="primary", use_container_width=True,
-                                          icon=":material/check:")
-    if not submitted:
+    # Eingefügte Antwort sofort merken (gebunden an genau diesen Auftrag): Streamlit verwirft den Feldinhalt,
+    # sobald man den Reiter oder die Seite wechselt – dann stünde man vor einem leeren Feld.
+    field, saved = f"bridge_answer_{key}", f"bridge_saved_{key}"
+    tag = hashlib.sha1(prompt.encode("utf-8")).hexdigest()
+    kept_tag, kept = st.session_state.get(saved) or ("", "")
+
+    def _keep():
+        st.session_state[saved] = (tag, st.session_state.get(field, ""))
+    answer = st.text_area("Antwort aus dem Chat", value=kept if kept_tag == tag else "", height=160, key=field,
+                          label_visibility="collapsed", on_change=_keep,
+                          placeholder="Unter der Antwort auf das Kopieren-Symbol klicken und hier mit Strg+V "
+                                      "einfügen.")
+    if kept_tag == tag and kept.strip():
+        st.caption(":material/save: Deine eingefügte Antwort ist gemerkt – auch wenn du zwischendurch den Reiter "
+                   "wechselst.")
+    if not st.button(submit, type="primary", use_container_width=True, icon=":material/check:",
+                     key=f"bridge_submit_{key}"):
         return None
+    st.session_state[saved] = (tag, answer)
     try:
-        return bridge.parse_answer(answer, validate)
+        data = bridge.parse_answer(answer, validate)
+        st.session_state.pop(saved, None)              # übernommen → nicht mehr vorschlagen
+        return data
     except ValueError as e:
         st.error(str(e), icon=":material/error:")
         st.markdown("Schreib das hier in **denselben Chat** und füge die neue Antwort ein:")

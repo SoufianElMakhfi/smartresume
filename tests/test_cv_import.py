@@ -98,3 +98,31 @@ def test_merge_profiles_keeps_existing_and_adds_new():
     assert [e["company"] for e in m["experience"]] == ["Muster GmbH", "Neu AG"]
     assert m["skills"][0]["items"] == ["SAP", "DATEV"]
     assert m["skills"][1]["category"] == "Office"
+
+
+def test_schema_examples_never_end_up_in_profile():
+    """Gemini/ChatGPT geben manchmal das Schema-Beispiel zurück – das darf keine Station im PDF werden."""
+    from smartresume.profile import PLACEHOLDERS
+    schema = json.loads(cv_import.CV_SYSTEM[cv_import.CV_SYSTEM.index("{"):])
+    leaves = set()
+
+    def walk(v):
+        if isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+        elif isinstance(v, str) and v:
+            leaves.add(v.lower())
+    walk(schema)
+    assert leaves - {"linkedin"} <= PLACEHOLDERS
+    echoed = normalize_profile({
+        "experience": [{"company": "", "role": "Jobtitel/Position", "start": "MM/JJJJ", "end": "MM/JJJJ oder Heute",
+                        "location": "", "bullets": ["…"]},
+                       {"company": "Die Streber", "role": "Nachhilfelehrer", "start": "11/2024", "end": "Heute",
+                        "bullets": ["…", "Vermittlung von Lerninhalten"]}],
+        "personal": {"zip_city": "PLZ Ort", "headline": "Berufsbezeichnung laut CV"}})
+    assert [e["role"] for e in echoed["experience"]] == ["Nachhilfelehrer"]
+    assert echoed["experience"][0]["bullets"] == ["Vermittlung von Lerninhalten"]
+    assert echoed["personal"]["zip_city"] == "" and echoed["personal"]["headline"] == ""

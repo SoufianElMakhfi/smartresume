@@ -294,6 +294,16 @@ def _main() -> None:
     with st.sidebar:
         _logo()
         st.caption(f"Angemeldet als **{user['email']}**")
+        # Wie arbeitet die KI gerade? Auf einen Blick – damit klar ist, ob der Key aktiv ist
+        from smartresume.ui.common import available_models
+        models = available_models()
+        if models:
+            st.caption(f":green[:material/bolt:] KI automatisch: **{models[0][0]['label']}**"
+                       + (f" (+{len(models) - 1} Ersatz)" if len(models) > 1 else ""))
+        else:
+            st.caption(":orange[:material/content_paste:] KI per Kopieren & Einfügen (kein API-Key)"
+                       + (" – unter **KI einrichten** einen kostenlosen Key eintragen, dann geht alles automatisch."
+                          if auth.can_configure_ai(user) else ""))
         for key, (label, icon) in pages.items():
             if st.button(label, key=f"nav_{key}", use_container_width=True, icon=icon,
                          type="primary" if st.session_state.page == key else "secondary"):

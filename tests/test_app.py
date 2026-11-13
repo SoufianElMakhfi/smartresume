@@ -410,7 +410,16 @@ def test_cv_import_via_chat_mode(env, monkeypatch):
     answer = {"personal": {"name": "Anna Beispiel", "zip_city": "Köln"},
               "experience": [{"company": "Muster AG", "role": "Verkäuferin", "start": "2020", "end": "2024",
                               "bullets": ["Beratung von Kundinnen und Kunden"]}]}
-    _paste_answer(at, json.dumps(answer, ensure_ascii=False))
+    # Antwort einfügen, wegnavigieren, zurück: die Antwort steht noch da
+    pasted = json.dumps(answer, ensure_ascii=False)
+    next(t for t in at.text_area if t.label == "Antwort aus dem Chat").input(pasted)
+    _run(at)
+    _btn(at, "Neue Bewerbung").click()
+    _run(at)
+    _btn(at, "Mein Profil").click()
+    _run(at)
+    assert next(t for t in at.text_area if t.label == "Antwort aus dem Chat").value == pasted
+    _paste_answer(at, pasted)
     prof = db.get_profile(uid)["data"]
     assert prof["personal"]["name"] == "Anna Beispiel" and prof["experience"][0]["company"] == "Muster AG"
     assert at.session_state.profile_tab.endswith("Persönlich")          # springt direkt zu den übernommenen Daten
@@ -449,12 +458,9 @@ def test_first_run_without_key_opens_setup_and_saves_key(env, monkeypatch):
     assert at.session_state.page == "setup"                    # erstes Konto ohne Key → zuerst KI einrichten
     assert any("KI einrichten" in t.value for t in at.title)
     next(t for t in at.text_input if t.key == "setup_GEMINI_API_KEY").input("AIza-test-123")
-    _run(at)
-    next(b for b in at.button if b.key == "test_GEMINI_API_KEY").click()
-    _run(at)
-    assert any("Funktioniert" in m.value for m in at.success)  # Test-Aufruf über das (Fake-)Modell
-    _btn(at, "Speichern").click()
-    _run(at)
+    _run(at)                                                   # Einfügen reicht: testen + speichern in einem
+    assert any("Funktioniert" in m.value and "Gespeichert" in m.value for m in at.success)
+    assert not any(b.label == "Speichern" for b in at.button)
     env_text = (env["tmp"] / ".env").read_text(encoding="utf-8")
     assert "GEMINI_API_KEY=" in env_text and "AIza-test-123" not in env_text   # verschlüsselt gespeichert
     assert config.is_set("GEMINI_API_KEY")

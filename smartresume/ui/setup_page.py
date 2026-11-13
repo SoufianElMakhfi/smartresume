@@ -5,8 +5,6 @@ für alle Nutzer dieser Installation. Ohne Key funktioniert die App weiter über
 """
 from __future__ import annotations
 
-import os
-
 import streamlit as st
 
 from .. import config, llm
@@ -24,23 +22,47 @@ def _test(env: str, key: str) -> tuple[bool, str]:
 
 
 def _provider(p: dict) -> str | None:
-    """Zeigt einen Anbieter. Gibt den eingegebenen Key zurück (oder None, wenn extern gesetzt)."""
+    """Zeigt einen Anbieter. Eingefügter Key wird sofort geprüft und gespeichert – kein extra „Speichern“."""
     env = p["env"]
     with st.container(border=True):
         c1, c2 = st.columns([3, 1])
-        status = ":green[:material/check_circle: eingerichtet]" if config.is_set(env) else ":gray[noch kein Key]"
+        status = ":green[:material/check_circle: eingerichtet und aktiv]" if config.is_set(env) \
+            else ":gray[noch kein Key]"
         c1.markdown(f"**{p['name']}** {'· kostenlos' if p['free'] else ''}  \n{status}")
         c2.link_button("Key holen", p["url"], use_container_width=True, icon=":material/open_in_new:")
         st.caption(p["how"])
         if config.set_externally(env):
             st.caption("Dieser Key ist auf dem Server fest hinterlegt und kann hier nicht geändert werden.")
             return None
-        value = st.text_input("API-Key", type="password", key=f"setup_{env}", placeholder="hier einfügen" if not config.is_set(env)
-                              else "gespeichert – zum Ändern neuen Key einfügen", label_visibility="collapsed")
-        if st.button("Testen", key=f"test_{env}", disabled=not (value.strip() or config.is_set(env))):
-            ok, msg = _test(env, value.strip() or os.environ.get(env, ""))
-            (st.success if ok else st.error)(msg)
-        return value.strip()
+        st.text_input("API-Key", type="password", key=f"setup_{env}", on_change=_save_key, args=(env,),
+                      placeholder="Key hier einfügen und Enter drücken" if not config.is_set(env)
+                      else "gespeichert – zum Ändern neuen Key einfügen", label_visibility="collapsed")
+        ok, msg = st.session_state.get(f"setup_msg_{env}") or (None, "")
+        if ok is True:
+            st.success(msg, icon=":material/check_circle:")
+        elif ok is False:
+            st.error(msg, icon=":material/error:")
+            if st.button("Trotzdem speichern", key=f"force_{env}",
+                         help="Z. B. wenn nur das Tageskontingent gerade aufgebraucht ist."):
+                config.save_values({env: st.session_state.pop(f"setup_pending_{env}", "")})
+                st.session_state[f"setup_msg_{env}"] = (True, "Gespeichert.")
+                st.rerun()
+        return None
+
+
+def _save_key(env: str) -> None:
+    """Callback beim Einfügen (Enter/Verlassen des Felds): testen und bei Erfolg sofort speichern."""
+    key = (st.session_state.get(f"setup_{env}") or "").strip()
+    st.session_state[f"setup_{env}"] = ""                     # Key nicht im Feld stehen lassen
+    if not key:
+        return
+    ok, msg = _test(env, key)
+    if ok:
+        config.save_values({env: key})
+        st.session_state[f"setup_msg_{env}"] = (True, f"{msg} Gespeichert – die KI arbeitet ab jetzt automatisch.")
+    else:
+        st.session_state[f"setup_pending_{env}"] = key
+        st.session_state[f"setup_msg_{env}"] = (False, f"Key nicht gespeichert: {msg}")
 
 
 def render() -> None:
@@ -50,28 +72,15 @@ def render() -> None:
     st.caption("Ohne Key funktioniert SmartResume trotzdem: dann über dein Gemini- oder ChatGPT-Konto per "
                "Kopieren & Einfügen. Die Keys bleiben auf diesem PC – verschlüsselt und nur mit deinem Windows-Konto lesbar.")
 
-    entered: dict[str, str] = {}
     for p in [p for p in config.PROVIDERS if p["free"]]:
-        v = _provider(p)
-        if v:
-            entered[p["env"]] = v
+        _provider(p)
     with st.expander("Weitere Anbieter (kostenpflichtig, optional)"):
         for p in [p for p in config.PROVIDERS if not p["free"]]:
-            v = _provider(p)
-            if v:
-                entered[p["env"]] = v
+            _provider(p)
 
-    c1, c2 = st.columns(2)
-    if c1.button("Speichern", type="primary", use_container_width=True, disabled=not entered,
-                 icon=":material/save:"):
-        config.save_values(entered)
-        for env in entered:
-            st.session_state.pop(f"setup_{env}", None)
-        st.toast("Gespeichert – die KI ist sofort einsatzbereit.", icon=":material/check:")
-        st.rerun()
     removable = [p for p in config.PROVIDERS if config.is_set(p["env"]) and not config.set_externally(p["env"])]
     if removable:
-        with c2.popover("Key entfernen", use_container_width=True, icon=":material/delete:"):
+        with st.popover("Key entfernen", icon=":material/delete:"):
             for p in removable:
                 if st.button(p["name"], key=f"rm_{p['env']}", use_container_width=True):
                     config.save_values({p["env"]: ""})

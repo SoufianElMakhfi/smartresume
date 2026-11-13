@@ -67,13 +67,24 @@ def empty_profile() -> dict:
 # ---------------------------------------------------------------------------
 _CITE_RE = re.compile(r"\s*\[cite:[^\]]*\]")
 
+# Beispielwerte aus dem Auslese-Auftrag (cv_import.CV_SYSTEM). Gemini/ChatGPT geben sie manchmal unverändert
+# zurück („Jobtitel/Position · MM/JJJJ – MM/JJJJ oder Heute · …“) – die dürfen nie im Profil oder PDF landen.
+# test_cv_import prüft, dass jeder Beispielwert des Auftrags hier steht.
+PLACEHOLDERS = {
+    "abschluss/ausbildung/studiengang", "berufsbezeichnung laut cv", "jobtitel/position", "mm/jjjj",
+    "mm/jjjj oder heute", "nachname inkl. zusätzen wie von/van/el", "plz ort", "profiltext laut cv oder leer",
+    "schwerpunkt/note, falls genannt", "vorname(n)", "z.b. eingeschrieben, studiengang, semester", "…", "...",
+    "jjjj", "mm.jjjj", "tt.mm.jjjj", "kategorie", "firma", "position",
+}
+
 
 def _s(v) -> str:
     if v is None:
         return ""
     if isinstance(v, (list, tuple)):
         return ", ".join(_s(x) for x in v if _s(x))
-    return _CITE_RE.sub("", str(v)).strip()
+    s = _CITE_RE.sub("", str(v)).strip()
+    return "" if s.lower() in PLACEHOLDERS else s
 
 
 def _str_list(v) -> list[str]:
@@ -81,7 +92,7 @@ def _str_list(v) -> list[str]:
         return []
     if isinstance(v, str):
         parts = re.split(r"[\n;]|,(?![^()]*\))", v)
-        return [p.strip(" •-\t") for p in parts if p.strip(" •-\t")]
+        return [p.strip(" •-\t") for p in parts if p.strip(" •-\t") and p.strip(" •-\t").lower() not in PLACEHOLDERS]
     out = []
     for x in v:
         if isinstance(x, dict):
