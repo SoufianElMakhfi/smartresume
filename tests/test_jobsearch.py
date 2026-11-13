@@ -163,43 +163,82 @@ def test_ratings_roundtrip():
                  "C": {"score": 40, "reason": "Lücken", "missing": []}}
 
 
-@pytest.mark.parametrize("text, mode", [
-    ("Wir bieten 100 % Remote – arbeite von überall in Deutschland.", "remote"),
-    ("Die Stelle ist vollständig im Homeoffice möglich.", "remote"),
-    ("Remote-first Team, ortsunabhängig.", "remote"),
-    ("2 Tage Homeoffice pro Woche, hybrides Arbeiten.", "hybrid"),
-    ("Mobiles Arbeiten nach Absprache.", "hybrid"),
-    ("Du übernimmst den Remote-Support unserer Kunden vor Ort.", "onsite"),   # kein Homeoffice
-    ("Homeoffice ist bei dieser Stelle leider nicht möglich.", "onsite"),
-    ("Moderner Arbeitsplatz in Köln.", "onsite"),
+@pytest.mark.parametrize("text, modes", [
+    # Remote = egal wo (schließt Homeoffice ein)
+    ("Wir bieten 100 % Remote – arbeite von überall in Deutschland.", {"remote", "homeoffice"}),
+    ("Remote-first Team, ortsunabhängig.", {"remote", "homeoffice"}),
+    ("Du arbeitest deutschlandweit im Homeoffice.", {"remote", "homeoffice"}),
+    ("Arbeitsort: Remote - Bundesweit", {"remote", "homeoffice"}),
+    ("Remote oder vor Ort – du entscheidest.", {"remote", "homeoffice"}),
+    # Homeoffice = komplett von zu Hause
+    ("Die Stelle ist vollständig im Homeoffice möglich.", {"homeoffice"}),
+    ("Du arbeitest zu 100 % von zu Hause.", {"homeoffice"}),
+    # Hybrid = beides
+    ("2 Tage Homeoffice pro Woche, hybrides Arbeiten.", {"hybrid"}),
+    ("Mobiles Arbeiten nach Absprache.", {"hybrid"}),
+    ("Flexible Aufteilung zwischen Büro und Homeoffice.", {"hybrid"}),
+    ("Voll remote oder hybrid – du entscheidest.", {"remote", "homeoffice", "hybrid"}),
+    # Präsenz
+    ("Du übernimmst den Remote-Support unserer Kunden vor Ort.", {"onsite"}),   # kein Homeoffice
+    ("Homeoffice ist bei dieser Stelle leider nicht möglich.", {"onsite"}),
+    ("Moderner Arbeitsplatz in Köln.", {"onsite"}),
 ])
-def test_work_mode_from_ad_text(text, mode):
-    assert js.work_mode("Sachbearbeiter (m/w/d)", text) == mode
+def test_work_modes_from_ad_text(text, modes):
+    assert js.work_modes("Sachbearbeiter (m/w/d)", text) == modes
+
+
+def test_work_mode_from_title_and_ba_flag():
+    assert js.work_mode("Java Developer (m/w/d) – Remote", "") == "remote"
+    assert js.work_mode("Remote Support Engineer (m/w/d)", "") == "onsite"
+    assert js.work_mode("Sachbearbeiter (m/w/d)", "Arbeitsplatz in Köln", flagged=True) == "hybrid"
+    assert js.work_mode("Sachbearbeiter (m/w/d)", "Kein Homeoffice.", flagged=True) == "onsite"
+
+
+def test_work_mode_words_in_query_are_filters_not_search_words():
+    assert js.mode_from_query("Werkstudent Informatik remote") == js.REMOTE
+    assert js.mode_from_query("Java Homeoffice") == js.HOMEOFFICE
+    assert js.mode_from_query("Controlling hybrid") == js.HYBRID
+    assert js.mode_from_query("Buchhaltung vor Ort") == js.ONSITE
+    assert js.mode_from_query("Remote Support") is None                       # Berufsbezeichnung
+    assert js.mode_from_query("Software") is None
+    p = js.plan("Werkstudent Informatik remote")
+    assert p["words"] == ["informatik"] and not any("remote" in q.lower() for q in p["queries"])
 
 
 def test_search_filters_by_work_mode(monkeypatch):
-    pool = [_job("R", "Softwareentwickler (m/w/d)"), _job("H", "Software Developer (m/w/d)"),
-            _job("O", "Softwareentwicklerin (m/w/d)")]
-    texts = {"R": "100 % remote", "H": "2 Tage Homeoffice", "O": "Arbeitsplatz in Köln"}
-    seen = []
+    pool = [_job("R", "Softwareentwickler (m/w/d)"), _job("F", "Softwareentwickler Backend (m/w/d)"),
+            _job("H", "Software Developer (m/w/d)"),
+            {**_job("O", "Softwareentwicklerin (m/w/d)"), "homeofficemoeglich": False}]
+    texts = {"R": "100 % remote", "F": "Komplett im Homeoffice", "H": "2 Tage Homeoffice",
+             "O": "Arbeitsplatz in Köln"}
+    seen, loaded = [], []
 
     def fake_get(path, params=None, timeout=20):
         seen.append(dict(params))
-        return {"maxErgebnisse": 3, "ergebnisliste": pool}
+        return {"maxErgebnisse": 4, "ergebnisliste": pool}
+
+    def fake_details(jobs, workers=6):
+        loaded.extend(j["ref"] for j in jobs)
+        return {j["ref"]: texts[j["ref"]] for j in jobs}
     monkeypatch.setattr(js, "_get", fake_get)
-    monkeypatch.setattr(js, "details_many", lambda jobs, workers=6: {j["ref"]: texts[j["ref"]] for j in jobs})
+    monkeypatch.setattr(js, "details_many", fake_details)
 
-    jobs, _ = js.search("Software", "Köln", 200, "Vollzeit", 30, work_mode=js.HOMEOFFICE)
-    assert {j["ref"] for j in jobs} == {"R", "H"}
+    def refs(mode, **kw):
+        seen.clear()
+        jobs, _ = js.search("Software", "Köln", 200, "Vollzeit", 30, work_mode=mode, **kw)
+        return {j["ref"] for j in jobs}
+
+    assert refs(js.ANY) == {"R", "F", "H", "O"} and not loaded               # Egal: nichts nachladen
+    assert refs(js.HOMEOFFICE) == {"R", "F"}                                 # komplett von zu Hause
     assert all(p.get("wo") == "Köln" and p.get("umkreis") == 200 for p in seen)
+    assert refs(js.HYBRID) == {"H"}
+    assert refs(js.ONSITE) == {"O"}
 
-    seen.clear()
     got, stats = {}, {}
-    jobs, _ = js.search("Software", "Köln", 25, "Vollzeit", 30, work_mode=js.REMOTE, texts=got, stats=stats)
-    assert [j["ref"] for j in jobs] == ["R"] and jobs[0]["work_mode"] == "remote"
+    assert refs(js.REMOTE, texts=got, stats=stats) == {"R"}                  # egal wo
     assert all("wo" not in p for p in seen)                                  # remote: deutschlandweit
     assert any(p["was"] == "Software remote" for p in seen)
-    assert got["R"] == "100 % remote" and stats == {"candidates": 3, "checked": 3}
+    assert got["R"] == "100 % remote" and stats == {"candidates": 4, "checked": 4}
 
 
 def test_germany_wide_radius_drops_location():

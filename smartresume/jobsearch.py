@@ -21,35 +21,94 @@ GERMANY = -1                                   # Umkreis „Deutschlandweit“ (
 RADII = [0, 10, 25, 50, 100, 200, GERMANY]
 MAX_AGE = {"Heute": 0, "Letzte 7 Tage": 7, "Letzte 14 Tage": 14, "Letzte 30 Tage": 30, "Alle": 100}
 
-# Arbeitsmodell. Die BA kennzeichnet Homeoffice nicht verlässlich (und unterscheidet nicht hybrid/voll remote),
-# deshalb prüft die App den Anzeigentext selbst.
-ANY, HOMEOFFICE, REMOTE = WORK_MODES = ["Egal", "Homeoffice möglich", "Nur Remote"]
-MAX_CHECK = 300                                # so viele Anzeigen werden höchstens auf Homeoffice geprüft
+# Arbeitsort. Die BA kennzeichnet Homeoffice nicht verlässlich (und unterscheidet nicht Homeoffice/Remote/hybrid),
+# deshalb liest die App Titel und Anzeigentext selbst.
+#   Egal        – kein Filter, schnellste Suche (nur Suchbegriff bzw. Titel zählen)
+#   Homeoffice  – komplett von zu Hause aus (Arbeitgeber im gewählten Umkreis; ortsunabhängige Stellen zählen mit)
+#   Remote      – egal wo, ortsunabhängig (deshalb immer deutschlandweit gesucht)
+#   Hybrid      – beides: teils im Büro, teils zu Hause
+#   Präsenz     – vor Ort, kein Homeoffice
+ANY, HOMEOFFICE, REMOTE, HYBRID, ONSITE = WORK_MODES = ["Egal", "Homeoffice", "Remote", "Hybrid", "Präsenz"]
+_MODE_KEY = {HOMEOFFICE: "homeoffice", REMOTE: "remote", HYBRID: "hybrid", ONSITE: "onsite"}
+MAX_CHECK = 300                                # so viele Anzeigen werden höchstens auf den Arbeitsort geprüft
+
+_REMOTE_WORD = (r"\bremote\b(?![\s-]?(?:support|desktop|zugriff|wartung|access|service|management|"
+                r"administration|anbindung|steuer|überwach|monitor))")
 _HOME_RE = re.compile(r"home[\s-]?office|mobile[ns]?\s+arbeiten|\bhybrid|telearbeit|von zu hause|work from home|"
-                      r"\bremote\b(?![\s-]?(?:support|desktop|zugriff|wartung|access|service|management|"
-                      r"administration|anbindung))|ortsunabh(?:ä|ae)ngig", re.I)
+                      + _REMOTE_WORD + r"|ortsunabh(?:ä|ae)ngig", re.I)
 _NO_HOME_RE = re.compile(r"\bkein(?:e|en)?\s+(?:möglichkeit\s+(?:zum|für|auf)\s+)?(?:home[\s-]?office|remote|"
                          r"mobiles\s+arbeiten)|(?:home[\s-]?office|remote)[^.\n]{0,30}\bnicht\s+möglich|"
-                         r"ausschließlich\s+vor\s+ort|100\s?%\s*vor\s+ort|präsenzpflicht", re.I)
-_FULL_REMOTE_RE = re.compile(r"(?:100\s?%|zu\s+100\s?%|vollständig|vollstaendig|komplett|ausschließlich|"
-                             r"ausschliesslich|fully|full)[\s-]*(?:im\s+)?(?:remote|home[\s-]?office|mobil)|"
-                             r"remote[\s-]?(?:first|only)\b|\bfull[\s-]?remote\b|ortsunabh(?:ä|ae)ngig|"
-                             r"(?:deutschlandweit|bundesweit)\s+(?:remote|im\s+home[\s-]?office)|"
-                             r"remote\s+aus\s+ganz\s+deutschland|work\s+from\s+anywhere", re.I)
+                         r"ausschließlich\s+vor\s+ort|100\s?%\s*vor\s+ort|präsenzpflicht|reine\s+präsenz", re.I)
+_ALL = r"(?:100\s?%|zu\s+100\s?%|vollständig|vollstaendig|komplett|ausschließlich|ausschliesslich|fully|full|rein|voll)"
+# egal wo: ortsunabhängig / von überall / ausdrücklich voll remote
+_ANYWHERE_RE = re.compile(_ALL + r"[\s-]*(?:im\s+)?remote|remote[\s-]?(?:first|only)\b|\bfull[\s-]?remote\b|"
+                          r"ortsunabh(?:ä|ae)ngig|work\s+from\s+anywhere|von\s+(?:überall|ueberall)|workation|"
+                          r"(?:deutschlandweit|bundesweit|europaweit)\s+(?:remote|im\s+home[\s-]?office|von\s+zu\s+hause)|"
+                          r"remote\s+(?:aus|in|von)\s+ganz\s+(?:deutschland|europa)|egal\s+wo|"
+                          r"remote[\s\-–:/(]*(?:bundesweit|deutschlandweit|europaweit)|arbeitsort:?\s*remote|"
+                          r"remote\s+oder\s+(?:vor\s+ort|(?:im|in\s+unserem)\s+büro)|"
+                          r"(?:vor\s+ort|im\s+büro)\s+oder\s+remote|"
+                          r"wo\s+(?:immer\s+)?du\s+(?:willst|möchtest|magst)", re.I)
+# komplett von zu Hause
+_FULL_HOME_RE = re.compile(_ALL + r"[\s-]*(?:im\s+|von\s+|aus\s+dem\s+)?(?:home[\s-]?office|mobil\w*|zu\s+hause|"
+                           r"daheim)|komplett\s+von\s+zu\s+hause|full[\s-]?home[\s-]?office", re.I)
+# teils Büro, teils zu Hause
+_HYBRID_RE = re.compile(r"\bhybrid|teilweise\s+(?:im\s+|von\s+)?(?:home|remote|mobil|zu\s+hause)|anteilig|"
+                        r"\d\s*(?:(?:-|bis)\s*\d\s*)?(?:tag|tage|day|days)\w*\s+(?:pro\s+woche\s+|/\s*woche\s+|"
+                        r"die\s+woche\s+)?(?:im\s+|von\s+)?(?:home|remote|mobil|zu\s+hause)|"
+                        r"(?:home[\s-]?office|remote|mobil\w*)[\s-]?(?:anteil|quote|tage?)\b|wahlweise|"
+                        r"flexibel(?:e|en)?\s+(?:zwischen|aufteilung|kombination)|"
+                        r"büro\s+(?:und|oder|&|\+)\s+(?:home|zu\s+hause|remote|mobil)|"
+                        r"(?:home[\s-]?office|zu\s+hause|remote)\s+(?:und|oder|&|\+)\s+(?:im\s+)?büro|"
+                        r"bis\s+zu\s+(?:[1-9]\d?)\s?%\s*(?:im\s+)?(?:home|remote|mobil)", re.I)
 
 
-def work_mode(title: str, text: str) -> str:
-    """'remote' (komplett von zu Hause), 'hybrid' (Homeoffice möglich) oder 'onsite' (nichts erwähnt/ausgeschlossen)."""
+def work_modes(title: str, text: str, flagged: bool = False) -> set[str]:
+    """Welche Arbeitsorte die Anzeige zulässt: {'remote', 'homeoffice', 'hybrid', 'onsite'}.
+    Remote (egal wo) schließt Homeoffice ein – wer überall arbeiten darf, darf es auch zu Hause.
+    `flagged`: Homeoffice-Kennzeichen der BA – zählt nur, wenn der Text nichts anderes sagt."""
     t = f"{title}\n{text}"
-    full = _FULL_REMOTE_RE.search(t)
-    if _NO_HOME_RE.search(t) and not full:
-        return "onsite"
+    anywhere = _ANYWHERE_RE.search(t) or re.search(_REMOTE_WORD, title, re.I)    # „(Remote)“ im Titel
+    full = _FULL_HOME_RE.search(t)
+    if _NO_HOME_RE.search(t) and not (anywhere or full):
+        return {"onsite"}
+    modes = set()
+    if anywhere:
+        modes |= {"remote", "homeoffice"}
     if full:
-        return "remote"
-    return "hybrid" if _HOME_RE.search(t) else "onsite"
+        modes.add("homeoffice")
+    if _HYBRID_RE.search(t) or (not modes and (_HOME_RE.search(t) or flagged)):
+        modes.add("hybrid")
+    return modes or {"onsite"}
 
 
-_classify = work_mode      # search() hat einen gleichnamigen Parameter
+def work_mode(title: str, text: str, flagged: bool = False) -> str:
+    """Der freieste Arbeitsort der Anzeige: 'remote' > 'homeoffice' > 'hybrid' > 'onsite'."""
+    modes = work_modes(title, text, flagged)
+    return next(m for m in ("remote", "homeoffice", "hybrid", "onsite") if m in modes)
+
+
+# Arbeitsort ausdrücklich im Suchbegriff („Java remote“) → gilt als Filter, wird aber nicht als Wort gesucht
+_MODE_WORDS = [
+    (REMOTE, _REMOTE_WORD + r"|\bortsunabh\w*"),
+    (HOMEOFFICE, r"\bhome[\s-]?office\b|\bvon\s+zu\s+hause\b"),
+    (HYBRID, r"\bhybrid\b"),
+    (ONSITE, r"\bpräsenz\b|\bvor\s+ort\b|\bon[\s-]?site\b"),
+]
+
+
+def mode_from_query(what: str) -> str | None:
+    """Arbeitsort aus dem Suchbegriff – oder None, wenn keiner genannt ist."""
+    for mode, rx in _MODE_WORDS:
+        if re.search(rx, what or "", re.I):
+            return mode
+    return None
+
+
+def strip_mode_words(what: str) -> str:
+    for _, rx in _MODE_WORDS:
+        what = re.sub(rx, " ", what or "", flags=re.I)
+    return re.sub(r"\s+", " ", what).strip()
 
 # Beschäftigungsart der App → Filter der BA (angebotsart: 1 Arbeit, 2 Selbstständigkeit, 4 Ausbildung,
 # 34 Praktikum/Trainee/Werkstudent; arbeitszeit: vz, tz, mj). „title“: woran man die Art im Stellentitel erkennt
@@ -211,7 +270,7 @@ def _stem(word: str) -> str:
 
 def plan(what: str) -> dict:
     """Zerlegt den Suchbegriff: eigene Wörter, erkannte Fachgebiete, Suchwörter für die BA und Prüfmuster."""
-    raw = [w.strip("-.") for w in re.findall(r"[\wäöüß.+#-]+", what or "")]
+    raw = [w.strip("-.") for w in re.findall(r"[\wäöüß.+#-]+", strip_mode_words(what or ""))]
     raw = [w for w in raw if len(w) >= 2 and not _SKIP.match(w.lower())]
     words = [w.lower() for w in raw]
     fields = [f for f in FIELDS if any(re.search(f["trigger"], w) for w in words)]
@@ -373,8 +432,9 @@ def search(what: str, where: str, radius: int = 25, employment_type: str = "Voll
     zusätzlich nach allen Stellen dieser Art im Umkreis. Danach prüft die App selbst, ob Titel bzw. Berufsangabe
     passen – die Volltextsuche der Jobbörse liefert sonst z. B. Logistik-Jobs, deren Text „Software“ erwähnt.
 
-    work_mode: „Homeoffice möglich“ bzw. „Nur Remote“ → die Anzeigentexte der relevantesten Stellen werden geladen
-    (landen in `texts`) und geprüft. „Nur Remote“ sucht deutschlandweit – der Wohnort spielt dann keine Rolle."""
+    work_mode: „Egal“ prüft nichts (schnellste Suche). Sonst werden die Anzeigentexte der relevantesten Stellen
+    geladen (landen in `texts`) und auf den Arbeitsort geprüft. „Remote“ (egal wo) sucht deutschlandweit – der
+    Wohnort spielt dann keine Rolle; Homeoffice, Hybrid und Präsenz suchen im gewählten Umkreis."""
     remote = work_mode == REMOTE
     if remote:
         where, radius = "", GERMANY
@@ -387,6 +447,10 @@ def search(what: str, where: str, radius: int = 25, employment_type: str = "Voll
     if remote:   # deutschlandweit nur Anzeigen, die Remote/Homeoffice überhaupt erwähnen (Volltextsuche der BA)
         words = p["queries"][:8] or [f.get("word", "")]
         specs = [({**base, "was": f"{q} {h}".strip()}, QUERY_PAGES) for q in words for h in ("remote", "homeoffice")]
+        # Die BA verknüpft mit UND und findet „Informatik remote“ viel seltener als „remote“ allein → zusätzlich alle
+        # Anzeigen mit diesen Wörtern holen; Titel/Fachgebiet prüft danach relevance()
+        if p["words"]:
+            specs += [({**base, "was": h}, POOL_PAGES) for h in ("remote", "homeoffice", "ortsunabhängig")]
     else:
         specs = [({**base, "was": q}, QUERY_PAGES) for q in p["queries"]]
     if f.get("word") and not remote:
@@ -414,16 +478,20 @@ def search(what: str, where: str, radius: int = 25, employment_type: str = "Voll
             out.append(j)
     out.sort(key=lambda j: j["published"] or "", reverse=True)
     out.sort(key=lambda j: -j["relevance"])            # stabil: innerhalb gleicher Relevanz neueste zuerst
-    if work_mode in (HOMEOFFICE, REMOTE):
+    wanted = _MODE_KEY.get(work_mode)
+    if wanted:
         texts = texts if texts is not None else {}
-        check = out[:MAX_CHECK]
+        # Bei vielen Kandidaten zuerst die, die laut BA (k)ein Homeoffice haben – Reihenfolge bleibt die Relevanz
+        check = sorted(out, key=lambda j: j["homeoffice"] == (wanted == "onsite"))[:MAX_CHECK]
         texts.update(details_many([j for j in check if j["ref"] not in texts], workers=10))
-        wanted = ("remote",) if remote else ("remote", "hybrid")
+        keep = set()
         for j in check:
-            j["work_mode"] = _classify(j["title"], texts.get(j["ref"], ""))
+            if wanted in work_modes(j["title"], texts.get(j["ref"], ""), j["homeoffice"]):
+                j["work_mode"] = wanted                # so steht es dann auch auf der Karte
+                keep.add(j["ref"])
         if stats is not None:
             stats.update(candidates=len(out), checked=len(check))
-        out = [j for j in check if j["work_mode"] in wanted]
+        out = [j for j in out if j["ref"] in keep]     # Reihenfolge (Relevanz) bleibt
     return out, len(out)
 
 

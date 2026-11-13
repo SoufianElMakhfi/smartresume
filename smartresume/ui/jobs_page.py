@@ -12,6 +12,27 @@ from .common import available_models, chat_bridge, fallback_chain, go, notify_sw
 STATE = ("jobs", "jobs_total", "jobs_texts", "jobs_query", "jobs_shown", "jobs_ratings", "jobs_manual", "jobs_stats")
 PAGE = 25          # so viele Stellen auf einmal anzeigen (deren Anzeigentexte werden dann geladen)
 SORTS = ["Passung", "Neueste", "Entfernung"]
+MODE_LABELS = {
+    jobsearch.ANY: "Egal – kein Filter (schnellste Suche)",
+    jobsearch.HOMEOFFICE: "Homeoffice – komplett von zu Hause aus",
+    jobsearch.REMOTE: "Remote – egal wo, ortsunabhängig",
+    jobsearch.HYBRID: "Hybrid – teils Büro, teils zu Hause",
+    jobsearch.ONSITE: "Präsenz – vor Ort im Büro",
+}
+MODE_HELP = ("**Egal:** kein Filter, nur Suchbegriff und Stellentitel zählen – am schnellsten.  \n"
+             "**Homeoffice:** komplett von zu Hause aus, Arbeitgeber im gewählten Umkreis.  \n"
+             "**Remote:** egal wo, ortsunabhängig – sucht deshalb immer in ganz Deutschland.  \n"
+             "**Hybrid:** beides – teils im Büro, teils zu Hause (z. B. 2 Tage Homeoffice pro Woche).  \n"
+             "**Präsenz:** vor Ort, kein Homeoffice.  \n"
+             "Erkannt am Titel und Anzeigentext. Steht „remote“, „Homeoffice“, „hybrid“ oder „vor Ort“ im "
+             "Suchbegriff, gilt das als Filter.")
+MODE_BADGES = {
+    "remote": ":material/public: Remote (egal wo)",
+    "homeoffice": ":material/home: Homeoffice (komplett von zu Hause)",
+    "hybrid": ":material/home_work: Hybrid (Büro + zu Hause)",
+    "onsite": ":material/apartment: Präsenz (vor Ort)",
+}
+_OLD_MODES = {"Homeoffice möglich": jobsearch.HYBRID, "Nur Remote": jobsearch.REMOTE}   # gespeicherte alte Wahl
 
 
 def _default_what(profile: dict) -> str:
@@ -117,12 +138,11 @@ def _card(job: dict, hits: list[str], rating: dict | None, applied: bool) -> Non
         facts = []
         if job["salary"]:
             facts.append(f":material/payments: {job['salary']}")
-        mode = job.get("work_mode") or (jobsearch.work_mode(job["title"], st.session_state.jobs_texts[job["ref"]])
-                                        if job["ref"] in st.session_state.jobs_texts else "")
-        if mode == "remote":
-            facts.append(":material/home_work: Remote (100 % Homeoffice)")
-        elif mode == "hybrid" or job["homeoffice"]:
-            facts.append(":material/home_work: Homeoffice möglich")
+        mode = job.get("work_mode") or (
+            jobsearch.work_mode(job["title"], st.session_state.jobs_texts[job["ref"]], job["homeoffice"])
+            if job["ref"] in st.session_state.jobs_texts else "hybrid" if job["homeoffice"] else "")
+        if mode in MODE_BADGES and (mode != "onsite" or job.get("work_mode") == "onsite"):   # sonst nur geraten
+            facts.append(MODE_BADGES[mode])
         if job["published"]:
             d = job["published"][:10].split("-")
             facts.append(f":material/calendar_today: seit {d[2]}.{d[1]}." if len(d) == 3
@@ -171,34 +191,34 @@ def render() -> None:
                              index=EMPLOYMENT_TYPES.index(etype) if etype in EMPLOYMENT_TYPES else 0)
         modes = jobsearch.WORK_MODES
         mode = saved.get("work_mode", jobsearch.ANY)
+        mode = _OLD_MODES.get(mode, mode)
         mode = c4.selectbox("Arbeitsort", modes, index=modes.index(mode) if mode in modes else 0,
-                            format_func=lambda m: {
-                                jobsearch.ANY: "Alle Stellen (im Büro, hybrid oder von zu Hause)",
-                                jobsearch.HOMEOFFICE: "Mit Homeoffice (teilweise oder ganz von zu Hause)",
-                                jobsearch.REMOTE: "Nur Remote (komplett von zu Hause, ganz Deutschland)"}[m],
-                            help="Homeoffice = (teilweise) von zu Hause arbeiten, oft 1–3 Tage pro Woche (hybrid). "
-                                 "Remote = komplett von zu Hause bzw. ortsunabhängig, nie oder selten im Büro – "
-                                 "deshalb sucht „Nur Remote“ in ganz Deutschland, Ort und Umkreis spielen keine Rolle.")
+                            format_func=MODE_LABELS.get, help=MODE_HELP)
         c5, c6 = st.columns(2)
         radius = saved.get("radius", 25)
         radius = c5.selectbox("Umkreis", jobsearch.RADII, index=jobsearch.RADII.index(radius)
                               if radius in jobsearch.RADII else 2,
                               format_func=lambda r: "nur dieser Ort" if r == 0 else "Deutschlandweit"
                               if r == jobsearch.GERMANY else f"{r} km",
-                              help="Bei „Nur Remote“ wird immer deutschlandweit gesucht.")
+                              help="Bei „Remote“ wird immer deutschlandweit gesucht.")
         ages = list(jobsearch.MAX_AGE)
         age = saved.get("age", "Letzte 30 Tage")
         age = c6.selectbox("Veröffentlicht", ages, index=ages.index(age) if age in ages else 3)
         submitted = st.form_submit_button("Suchen", type="primary", use_container_width=True, icon=":material/search:")
 
     if submitted:
+        notes = []
         named = jobsearch.type_from_query(what)       # „Werkstudent …“ im Suchbegriff schlägt die Auswahl
         if named and named != etype:
-            st.session_state.jobs_type_note = f"„{named}“ steht in deinem Suchbegriff – gesucht wird deshalb nach " \
-                                              f"{named}-Stellen (statt {etype})."
+            notes.append(f"„{named}“ steht in deinem Suchbegriff – gesucht wird deshalb nach {named}-Stellen "
+                         f"(statt {etype}).")
             etype = named
-        else:
-            st.session_state.pop("jobs_type_note", None)
+        named_mode = jobsearch.mode_from_query(what)  # „… remote“ ebenso beim Arbeitsort
+        if named_mode and named_mode != mode:
+            notes.append(f"„{named_mode}“ steht in deinem Suchbegriff – gefiltert wird deshalb nach "
+                         f"{MODE_LABELS[named_mode]} (statt {mode}).")
+            mode = named_mode
+        st.session_state.jobs_type_note = "  \n".join(notes)
         settings["job_search"] = {"what": what, "where": where, "employment_type": etype, "radius": radius, "age": age,
                                   "work_mode": mode}
         db.save_user_settings(uid(), settings)
@@ -206,7 +226,7 @@ def render() -> None:
                  "max_age": jobsearch.MAX_AGE[age], "work_mode": mode}
         try:
             with st.spinner("Suche Stellen …" if mode == jobsearch.ANY else
-                            "Suche Stellen und prüfe die Anzeigen auf Homeoffice/Remote – das dauert etwas …"):
+                            f"Suche Stellen und prüfe die Anzeigen auf „{mode}“ – das dauert etwas …"):
                 _run_search(query)
         except jobsearch.JobSearchError as e:
             st.error(str(e))
@@ -252,10 +272,9 @@ def render() -> None:
         c1.caption("Fachgebiet erkannt: " + ", ".join(fields) + " – verwandte Begriffe wurden mitgesucht.")
     stats = st.session_state.get("jobs_stats") or {}
     if stats.get("checked"):
-        what = "komplett remote" if query.get("work_mode") == jobsearch.REMOTE else "mit Homeoffice"
         more = f" (die {stats['checked']} passendsten von {stats['candidates']})" \
             if stats["candidates"] > stats["checked"] else ""
-        c1.caption(f"Nur Stellen {what} – erkannt am Anzeigentext{more}.")
+        c1.caption(f"Nur {MODE_LABELS.get(query.get('work_mode'), '')} – erkannt an Titel und Anzeigentext{more}.")
     unrated = sum(1 for j in visible if j["ref"] not in ratings)
     if unrated and not st.session_state.get("jobs_manual"):
         if c2.button(f"KI-Passung prüfen ({min(unrated, PAGE)} Stellen)", use_container_width=True,
