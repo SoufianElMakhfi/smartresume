@@ -35,9 +35,11 @@ DEFAULT_MODELS = [
     {"label": "Mistral Small", "provider": "openai_compat", "model": "mistral-small-latest",
      "base_url": "https://api.mistral.ai/v1", "key_env": "MISTRAL_API_KEY", "note": "Prepaid ab 10 €, europäisch"},
     {"label": "Claude Haiku 5.5", "provider": "claude", "model": "claude-haiku-5-5",
-     "key_env": "ANTHROPIC_API_KEY", "note": "Günstig, sehr zuverlässig"},
+     "key_env": "ANTHROPIC_API_KEY", "note": "Am günstigsten, schnell ($0,10 / $0,50 je 1 Mio. Tokens)"},
     {"label": "Claude Sonnet 5.5", "provider": "claude", "model": "claude-sonnet-5-5",
-     "key_env": "ANTHROPIC_API_KEY", "note": "Beste Textqualität, kostenpflichtig"},
+     "key_env": "ANTHROPIC_API_KEY", "note": "Sehr gute Texte – empfohlen ($2 / $10 je 1 Mio. Tokens)"},
+    {"label": "Claude Opus 5.5", "provider": "claude", "model": "claude-opus-5-5",
+     "key_env": "ANTHROPIC_API_KEY", "note": "Beste Textqualität ($4 / $20 je 1 Mio. Tokens)"},
 ]
 
 
@@ -242,9 +244,18 @@ def _call_claude(cfg, key, system, user, json_mode, max_tokens, temperature) -> 
     import anthropic
 
     client = anthropic.Anthropic(api_key=key)
-    resp = client.messages.create(
-        model=cfg["model"], max_tokens=max_tokens, temperature=temperature,
-        system=system, messages=[{"role": "user", "content": user}])
+    max_tokens = max(max_tokens, 16000)   # Denken ist bei Claude immer an und zählt mit – sonst bricht das JSON ab
+    # Kein `temperature`: die aktuellen Claude-Modelle lehnen Sampling-Parameter ab (HTTP 400).
+    # Sonnet/Opus: lehnt das Modell eine Anfrage ab, beantwortet sie die API selbst mit einem Ausweichmodell.
+    if "haiku" in cfg["model"]:
+        resp = client.messages.create(model=cfg["model"], max_tokens=max_tokens, system=system,
+                                      messages=[{"role": "user", "content": user}])
+    else:
+        resp = client.beta.messages.create(model=cfg["model"], max_tokens=max_tokens, system=system,
+                                           messages=[{"role": "user", "content": user}],
+                                           betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    if resp.stop_reason == "refusal":
+        raise LLMError(f"{cfg['label']} hat die Anfrage abgelehnt.", transient=True)
     text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
     return LLMResult(text, resp.usage.input_tokens, resp.usage.output_tokens, cfg["model"])
 

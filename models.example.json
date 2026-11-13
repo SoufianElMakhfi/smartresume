@@ -43,14 +43,21 @@
     "provider": "claude",
     "model": "claude-haiku-5-5",
     "key_env": "ANTHROPIC_API_KEY",
-    "note": "Günstig, sehr zuverlässig"
+    "note": "Am günstigsten, schnell ($0,10 / $0,50 je 1 Mio. Tokens)"
   },
   {
     "label": "Claude Sonnet 5.5",
     "provider": "claude",
     "model": "claude-sonnet-5-5",
     "key_env": "ANTHROPIC_API_KEY",
-    "note": "Beste Textqualität, kostenpflichtig"
+    "note": "Sehr gute Texte – empfohlen ($2 / $10 je 1 Mio. Tokens)"
+  },
+  {
+    "label": "Claude Opus 5.5",
+    "provider": "claude",
+    "model": "claude-opus-5-5",
+    "key_env": "ANTHROPIC_API_KEY",
+    "note": "Beste Textqualität ($4 / $20 je 1 Mio. Tokens)"
   },
   {
     "label": "Lokal: Qwen via Ollama",

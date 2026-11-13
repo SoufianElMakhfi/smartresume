@@ -7,7 +7,38 @@ from __future__ import annotations
 
 import streamlit as st
 
-from .. import config, llm
+from .. import config, db, llm
+from .common import available_models, uid
+
+
+def _model_choice(env: str) -> None:
+    """Kostenpflichtiger Anbieter mit Key: auswählen, welches seiner Modelle die Bewerbungen schreibt
+    (dieselbe Einstellung wie „Standardmodell“ unter Einstellungen)."""
+    models = [m for m in llm.load_models() if m.get("key_env") == env]
+    if not models:
+        return
+    labels = [m["label"] for m in models]
+    notes = {m["label"]: m.get("note", "") for m in models}
+    settings = db.get_user_settings(uid())
+    current = settings.get("default_model")
+    key = f"model_{env}"
+    st.session_state[key] = current if current in labels else None    # immer die gespeicherte Wahl zeigen
+
+    def pick():
+        s = db.get_user_settings(uid())
+        if st.session_state.get(key):
+            s["default_model"] = st.session_state[key]
+            db.save_user_settings(uid(), s)
+            st.toast(f"{st.session_state[key]} schreibt ab jetzt deine Bewerbungen.", icon=":material/check:")
+
+    st.selectbox("Welches Modell soll deine Bewerbungen schreiben?", labels, key=key, on_change=pick,
+                 placeholder="Modell auswählen …", format_func=lambda l: f"{l} – {notes[l]}" if notes[l] else l)
+    if current in labels:
+        st.caption(f":green[:material/check: **{current}** wird verwendet.] Ist es gerade nicht erreichbar, "
+                   "springt die App automatisch auf ein anderes eingerichtetes Modell.")
+    else:
+        now = current if current in [c["label"] for c, _ in available_models()] else None
+        st.caption("Noch nicht ausgewählt" + (f" – bisher schreibt **{now}**." if now else "."))
 
 
 def _test(env: str, key: str) -> tuple[bool, str]:
@@ -31,6 +62,8 @@ def _provider(p: dict) -> str | None:
         c1.markdown(f"**{p['name']}** {'· kostenlos' if p['free'] else ''}  \n{status}")
         c2.link_button("Key holen", p["url"], use_container_width=True, icon=":material/open_in_new:")
         st.caption(p["how"])
+        if not p["free"] and config.is_set(env):
+            _model_choice(env)
         if config.set_externally(env):
             st.caption("Dieser Key ist auf dem Server fest hinterlegt und kann hier nicht geändert werden.")
             return None
@@ -105,8 +138,10 @@ def render() -> None:
 
     for p in [p for p in config.PROVIDERS if p["free"]]:
         _provider(p)
-    with st.expander("Weitere Anbieter (kostenpflichtig, optional)"):
-        for p in [p for p in config.PROVIDERS if not p["free"]]:
+    paid = [p for p in config.PROVIDERS if not p["free"]]           # Claude zuerst
+    with st.expander("Kostenpflichtige Anbieter (Claude & Co., optional)",
+                     expanded=any(config.is_set(p["env"]) for p in paid)):
+        for p in paid:
             _provider(p)
 
     removable = [p for p in config.PROVIDERS if config.is_set(p["env"]) and not config.set_externally(p["env"])]

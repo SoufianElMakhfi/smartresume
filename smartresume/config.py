@@ -18,13 +18,16 @@ PROVIDERS = [
     {"env": "GROQ_API_KEY", "name": "Groq", "free": True,
      "url": "https://console.groq.com/keys",
      "how": "Konto anlegen → „Create API Key“ → Key kopieren."},
+    # Kostenpflichtig – Claude zuerst
+    {"env": "ANTHROPIC_API_KEY", "name": "Anthropic Claude", "free": False,
+     "url": "https://console.anthropic.com/settings/keys",
+     "how": "Beste Textqualität. Abrechnung nach Verbrauch: In der Anthropic Console Guthaben aufladen → "
+            "„Create Key“ → Key kopieren. Danach wählst du hier, welches Claude-Modell schreibt."},
+    {"env": "OPENROUTER_API_KEY", "name": "OpenRouter", "free": False,
+     "url": "https://openrouter.ai/keys", "how": "Guthaben-basiert, sehr günstig."},
     {"env": "MISTRAL_API_KEY", "name": "Mistral", "free": False,
      "url": "https://console.mistral.ai/api-keys",
      "how": "Europäischer Anbieter. API nur mit Prepaid-Guthaben (ab 10 €) – kein Gratis-Plan mehr."},
-    {"env": "OPENROUTER_API_KEY", "name": "OpenRouter", "free": False,
-     "url": "https://openrouter.ai/keys", "how": "Guthaben-basiert, sehr günstig."},
-    {"env": "ANTHROPIC_API_KEY", "name": "Anthropic Claude", "free": False,
-     "url": "https://console.anthropic.com/settings/keys", "how": "Kostenpflichtig, sehr gute Textqualität."},
 ]
 
 _LINE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=")

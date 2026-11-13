@@ -478,6 +478,62 @@ def test_first_run_without_key_opens_setup_and_saves_key(env, monkeypatch):
     assert any("KI automatisch" in c.value for c in at.sidebar.caption)   # sofort einsatzbereit
 
 
+def test_paid_provider_claude_first_with_model_choice(env, monkeypatch):
+    models = [{"label": "Gemini Test", "provider": "fake", "model": "fake-1", "key_env": "FAKE_KEY"},
+              {"label": "Claude Klein", "provider": "fake", "model": "c-1", "key_env": "ANTHROPIC_API_KEY",
+               "note": "günstig"},
+              {"label": "Claude Groß", "provider": "fake", "model": "c-2", "key_env": "ANTHROPIC_API_KEY"}]
+    (env["tmp"] / "models.json").write_text(json.dumps(models))
+    assert [p["name"] for p in config.PROVIDERS if not p["free"]][0] == "Anthropic Claude"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    from smartresume.profile import from_legacy_master
+    uid = db.create_user("anna@example.com", is_admin=True)    # KI einrichten dürfen nur Admins
+    db.save_profile(uid, data=from_legacy_master(json.loads(SAMPLE.read_text("utf-8"))))
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _btn(at, "KI einrichten").click()
+    _run(at)
+    pick = next(s for s in at.selectbox if s.key == "model_ANTHROPIC_API_KEY")
+    assert pick.options == ["Claude Klein – günstig", "Claude Groß"] and pick.value is None
+    pick.set_value("Claude Groß")
+    _run(at)
+    assert db.get_user_settings(uid)["default_model"] == "Claude Groß"
+    assert next(s for s in at.selectbox if s.key == "model_ANTHROPIC_API_KEY").value == "Claude Groß"
+    assert any("Claude Groß" in c.value and "verwendet" in c.value for c in at.caption)
+
+
+def test_claude_call_sends_no_temperature(monkeypatch):
+    import sys
+    import types
+    from smartresume import llm
+    calls = []
+
+    class Resp:
+        stop_reason = "end_turn"
+        content = [types.SimpleNamespace(type="text", text="OK")]
+        usage = types.SimpleNamespace(input_tokens=1, output_tokens=1)
+
+    class Api:
+        def create(self, **kw):
+            calls.append(kw)
+            return Resp()
+
+    class Client:
+        def __init__(self, api_key):
+            self.messages = Api()
+            self.beta = types.SimpleNamespace(messages=Api())
+    monkeypatch.setitem(sys.modules, "anthropic", types.SimpleNamespace(Anthropic=Client))
+    for model in ("claude-haiku-5-5", "claude-sonnet-5-5"):
+        cfg = {"label": model, "provider": "claude", "model": model}
+        assert llm.complete(cfg, "k", "s", "u", temperature=0.4, max_tokens=4096).text == "OK"
+    assert all("temperature" not in c and c["max_tokens"] >= 16000 for c in calls)
+    assert "fallbacks" not in calls[0] and calls[1]["fallbacks"] == "default"
+
+    Resp.stop_reason = "refusal"
+    with pytest.raises(llm.LLMError) as e:
+        llm.complete({"label": "Claude", "provider": "claude", "model": "claude-opus-5-5"}, "k", "s", "u")
+    assert e.value.transient                                   # → anderes Modell versuchen
+
+
 def test_setup_page_is_admin_only(env):
     db.create_user("chef@example.com", is_admin=True)
     db.create_user("bernd@example.com")
