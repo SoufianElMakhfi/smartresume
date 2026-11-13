@@ -209,14 +209,25 @@ def test_germany_wide_radius_drops_location():
 
 def test_employment_type_from_query_wins():
     assert js.type_from_query("Werkstudent Student der Wirtschaftsinformatik") == "Werkstudent"
-    assert js.type_from_query("Student der Wirtschaftsinformatik") == "Werkstudent"
     assert js.type_from_query("Praktikum Marketing für Studierende") == "Praktikum"
     assert js.type_from_query("Ausbildung Fachinformatiker") == "Ausbildung"
+    assert js.type_from_query("Vollzeit Wirtschaftsinformatik") == "Vollzeit"
+    # „Student“ beschreibt die Person, nicht die Stelle – fertige Studenten suchen auch Vollzeit
+    assert js.type_from_query("Student der Wirtschaftsinformatik") is None
     assert js.type_from_query("Controlling") is None
 
 
-def test_student_headline_defaults_to_werkstudent():
+def test_own_choice_wins_no_guess_from_headline():
     from smartresume.profile import default_employment_type, normalize_profile
-    p = normalize_profile({"personal": {"headline": "Student der Wirtschaftsinformatik"}})
-    assert default_employment_type(p) == "Werkstudent"
-    assert default_employment_type(normalize_profile({})) == "Vollzeit"
+    student = normalize_profile({"personal": {"headline": "Student der Wirtschaftsinformatik"}})
+    assert default_employment_type(student) == "Vollzeit"                      # keine Vermutung
+    enrolled = normalize_profile({"preferences": {"student_status": "Eingeschrieben, 5. Semester"}})
+    assert default_employment_type(enrolled) == "Werkstudent"                  # nur beim ersten Mal
+    assert default_employment_type(enrolled, {"employment_type": "Vollzeit"}) == "Vollzeit"   # Wahl gemerkt
+
+
+def test_search_term_suggestion_is_the_subject_not_the_person():
+    from smartresume.profile import normalize_profile
+    from smartresume.ui.jobs_page import _default_what
+    assert _default_what(normalize_profile({"personal": {"headline": "Student der Wirtschaftsinformatik"}}))         == "Wirtschaftsinformatik"
+    assert _default_what(normalize_profile({"personal": {"headline": "Kaufmann für Büromanagement"}}))         == "Kaufmann für Büromanagement"

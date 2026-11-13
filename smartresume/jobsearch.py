@@ -68,17 +68,17 @@ _FILTERS = {
     "Freelance": {"angebotsart": 2},
 }
 
-# Beschäftigungsart, die im Suchbegriff steht („Werkstudent Wirtschaftsinformatik“) – hat Vorrang vor der Auswahl,
-# sonst sucht man mit „Vollzeit“ und bekommt Vollzeitstellen. Reihenfolge = Vorrang.
+# Ausdrücklich genannte Stellenart im Suchbegriff („Werkstudent Wirtschaftsinformatik“) hat Vorrang vor der Auswahl,
+# sonst sucht man mit „Vollzeit“ und bekommt Vollzeitstellen. NICHT „Student“: das beschreibt die Person, nicht die
+# gesuchte Stelle (fertige Studenten suchen Vollzeit). Reihenfolge = Vorrang.
 _TYPE_WORDS = [
-    ("Werkstudent", r"\bwerkstud\w*"),
+    ("Werkstudent", r"\bwerkstud\w*|\bstudentische\w*\s+(?:hilfskraft|aushilfe|mitarbeit)\w*"),
     ("Praktikum", r"\bprakti\w*|\bpraxissemester\b|\binternship\b"),
     ("Ausbildung", r"\bausbildung\w*|\bazubi\w*"),
     ("Minijob", r"\bminijob\w*|\bgeringfügig\w*"),
     ("Teilzeit", r"\bteilzeit\b"),
     ("Vollzeit", r"\bvollzeit\b"),
     ("Freelance", r"\bfreelanc\w*|\bfreiberuf\w*"),
-    ("Werkstudent", r"\bstudent\w*|\bstudierend\w*|\bstudentisch\w*"),
 ]
 
 

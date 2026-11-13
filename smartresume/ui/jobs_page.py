@@ -1,6 +1,8 @@
 """Jobs finden: Stellensuche (Jobbörse der Bundesagentur für Arbeit) → Passung → Bewerbung per Klick."""
 from __future__ import annotations
 
+import re
+
 import streamlit as st
 
 from .. import bridge, db, jobsearch, llm
@@ -13,7 +15,9 @@ SORTS = ["Passung", "Neueste", "Entfernung"]
 
 
 def _default_what(profile: dict) -> str:
-    head = profile["personal"].get("headline", "")
+    """Vorschlag für „Was?“: das Fach, nicht die Person – „Student der Wirtschaftsinformatik“ → „Wirtschaftsinformatik“."""
+    head = re.sub(r"^\s*(?:werk)?student(?:in)?\s+(?:der|des|im|in|für)\s+", "",
+                  profile["personal"].get("headline", ""), flags=re.I).strip()
     if head:
         return head
     exp = profile.get("experience") or []
