@@ -74,9 +74,20 @@ def _ref_index(ref, prefix: str) -> int | None:
     return int(m.group(1)) - 1 if m else None
 
 
+def skill_key(skill: str) -> str:
+    """Vergleichsschlüssel: „MS Excel“ = „Microsoft Excel“ = „excel“ (keine Doppelten im Lebenslauf)."""
+    k = re.sub(r"\s+", " ", str(skill or "").lower()).strip(" .")
+    return re.sub(r"^(?:ms|microsoft)\s+", "", k)
+
+
 def _parse_extra_skills(extra_info: str) -> list[str]:
-    items = re.split(r"[,;\n]", extra_info or "")
-    return [i.strip(" •-") for i in items if 1 < len(i.strip(" •-")) <= 40]
+    items = [i.strip(" •-") for i in re.split(r"[,;\n]", extra_info or "")]
+    out, seen = [], set()
+    for i in items:
+        if 1 < len(i) <= 40 and skill_key(i) not in seen:
+            seen.add(skill_key(i))
+            out.append(i)
+    return out
 
 
 _GENDER_RE = re.compile(r"\s*\(\s*(?:[mwdfxi]|div|all)(?:\s*[/|,]\s*(?:[mwdfxi]|div|all))+\s*\)|\s*\*\s*$",
@@ -184,14 +195,21 @@ def assemble(ai: dict, profile: dict, employment_type: str, extra_info: str = ""
                 skills.append({"category": s["category"], "items": ", ".join(items)})
             if len(skills) >= 4:
                 break
-    # Zusatz-Skills dieser Bewerbung: nur die, die noch nicht im CV stehen – in „Weitere Kenntnisse“
-    missing_extra = [x for x in extra if x.lower() not in shown]
-    if missing_extra:
-        other = next((s for s in skills if s["category"].lower() == "weitere kenntnisse"), None)
-        if other is None:
-            skills.append({"category": "Weitere Kenntnisse", "items": ", ".join(missing_extra[:6])})
-        else:
-            other["items"] = ", ".join([other["items"]] + missing_extra[:6])
+    # Zusatz-Skills dieser Bewerbung: nur die, die noch nicht im CV stehen (auch nicht in anderer Schreibweise,
+    # z. B. „Excel“ vs. „MS Excel“) – in ihrer Profilkategorie, sonst unter „Weitere Kenntnisse“
+    shown_keys = {skill_key(x) for x in shown} | {skill_key(i) for s in skills for i in s["items"].split(", ")}
+    by_key = {}
+    for k, v in home.items():
+        by_key.setdefault(skill_key(k), v)
+    for x in [x for x in extra if skill_key(x) not in shown_keys][:6]:
+        cat, x = by_key.get(skill_key(x), ("Weitere Kenntnisse", x))     # Schreibweise aus dem Profil
+        target = next((s for s in skills if s["category"].lower() == cat.lower()), None) or \
+            next((s for s in skills if s["category"].lower() == "weitere kenntnisse"), None)
+        if target is None:
+            target = {"category": "Weitere Kenntnisse", "items": ""}
+            skills.append(target)
+        target["items"] = ", ".join(i for i in (target["items"], x) if i)
+        shown_keys.add(skill_key(x))
     if profile["languages"]:
         skills.append({"category": "Sprachen", "items": ", ".join(
             f"{l['language']} ({l['level']})" if l["level"] else l["language"] for l in profile["languages"])})

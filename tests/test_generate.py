@@ -238,6 +238,18 @@ def test_no_duplicate_skills_in_cv(profile):
     assert sum(1 for c in s["skills"] if c["category"] == "Weitere Kenntnisse") <= 1
 
 
+def test_extra_skills_no_duplicates_in_other_spelling(profile):
+    """Zusatz-Skills: „ms jira“ ist „Jira“ aus dem Profil, „docker, Docker“ nur einmal; Profil-Skills, die die KI
+    nicht ausgewählt hat, landen in ihrer eigenen Kategorie statt unter „Weitere Kenntnisse“."""
+    profile["skills"].append({"category": "Office", "items": ["MS Excel"]})
+    ai = json.loads(json.dumps(AI_ANSWER))
+    ai["skills"] = [{"ref": "S1", "items": ["React"]}, {"ref": "S2", "items": ["Jira"]}]
+    s = generate.assemble(ai, profile, "Vollzeit", extra_info="ms jira, docker, Docker, Excel")
+    items = [generate.skill_key(i) for c in s["skills"] for i in c["items"].split(", ")]
+    assert items.count("jira") == 1 and items.count("docker") == 1 and items.count("excel") == 1
+    assert "MS Excel" in str(s["skills"])                                   # Schreibweise aus dem Profil
+
+
 def test_skills_land_in_their_own_category(profile):
     ai = json.loads(json.dumps(AI_ANSWER))
     cats = profile["skills"]

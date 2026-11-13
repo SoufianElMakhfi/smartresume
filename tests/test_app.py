@@ -221,20 +221,38 @@ def test_profile_skills_as_chips_without_duplicates(env):
     first, second = skills[0], skills[1]
     boxes = [m for m in at.multiselect if m.label == "Skills"]
     assert boxes[0].value == first["items"]
-    # neuer Skill in Kategorie 2 + ein Skill, der schon in Kategorie 1 steht (andere Schreibweise)
-    boxes[1].set_value(second["items"] + ["Docker", first["items"][0].upper()])
+    # Über „Hinzufügen“: neuer Skill in Kategorie 2 + einer, der schon in Kategorie 1 steht (andere Schreibweise)
+    at.text_input(key="skill_new").input(f"Docker, {first['items'][0].upper()}")
+    at.selectbox(key="skill_cat").set_value(second["category"])
+    _btn(at, "Hinzufügen").click()
     _run(at)
     saved = db.get_profile(uid)["data"]["skills"]
     assert "Docker" in saved[1]["items"]
     assert sum(i.lower() == first["items"][0].lower() for s in saved for i in s["items"]) == 1
     assert any("nicht doppelt" in i.value for i in at.info)
-    # Sprache hinzufügen
+    assert at.text_input(key="skill_new").value == ""                  # Eingabefeld wieder leer
+    # Entfernen per ✕
+    boxes = [m for m in at.multiselect if m.label == "Skills"]
+    boxes[0].set_value(first["items"][1:])
+    _run(at)
+    assert first["items"][0] not in db.get_profile(uid)["data"]["skills"][0]["items"]
+    # Sprache hinzufügen: Niveau ist nicht vorausgewählt
     _btn(at, "Sprache hinzufügen").click()
     _run(at)
     lang_inputs = [t for t in at.text_input if t.placeholder == "z. B. Englisch"]
     lang_inputs[-1].input("Spanisch")
     _run(at)
-    assert any(l["language"] == "Spanisch" for l in db.get_profile(uid)["data"]["languages"])
+    spanish = next(l for l in db.get_profile(uid)["data"]["languages"] if l["language"] == "Spanisch")
+    assert spanish["level"] == ""
+    # Link: Plattform aus der Liste, Icon passt dazu
+    _btn(at, "Link hinzufügen").click()
+    _run(at)
+    link_boxes = [s for s in at.selectbox if s.label == "Plattform"]
+    link_boxes[-1].set_value("XING")
+    next(t for t in reversed(at.text_input) if t.label == "Link").input("https://www.xing.com/profile/Max")
+    _run(at)
+    links = db.get_profile(uid)["data"]["personal"]["links"]
+    assert {"label": "XING", "url": "https://www.xing.com/profile/Max"} in links
 
 
 @pytest.mark.skipif(render.find_typst() is None and importlib.util.find_spec("typst") is None,

@@ -213,27 +213,43 @@ def add_skills(profile: dict, items: list[str], category: str = "Weitere Kenntni
     return new
 
 
+# Plattformen für Links: (Bezeichnung, Icon in icons/, Erkennungsmerkmal in der URL)
+LINK_PLATFORMS = [
+    ("LinkedIn", "linkedin", "linkedin."),
+    ("XING", "xing", "xing."),
+    ("GitHub", "github", "github."),
+    ("GitLab", "gitlab", "gitlab."),
+    ("Portfolio", "globe", ""),
+    ("Website", "globe", ""),
+    ("Instagram", "instagram", "instagram."),
+    ("X (Twitter)", "x", "x.com/"),
+    ("YouTube", "youtube", "youtube."),
+    ("TikTok", "tiktok", "tiktok."),
+    ("Facebook", "facebook", "facebook."),
+    ("Behance", "behance", "behance."),
+    ("Dribbble", "dribbble", "dribbble."),
+    ("Stack Overflow", "stackoverflow", "stackoverflow."),
+    ("Medium", "medium", "medium."),
+]
+LINK_LABELS = [p[0] for p in LINK_PLATFORMS]
+
+
 def guess_link_label(url: str) -> str:
     u = url.lower()
-    if "linkedin." in u:
-        return "LinkedIn"
-    if "github." in u:
-        return "GitHub"
-    if "xing." in u:
-        return "XING"
-    if "behance." in u or "dribbble." in u:
-        return "Portfolio"
+    if "twitter." in u:
+        return "X (Twitter)"
+    for label, _, marker in LINK_PLATFORMS:
+        if marker and marker in u:
+            return label
     return "Website"
 
 
 def link_icon(label: str, url: str) -> str:
-    """Name des Icons in icons/ (ohne .svg)."""
-    s = f"{label} {url}".lower()
-    if "linkedin" in s:
-        return "linkedin"
-    if "github" in s:
-        return "github"
-    return "globe"
+    """Name des Icons in icons/ (ohne .svg) – nach gewählter Plattform, sonst nach der Adresse."""
+    for name, icon, _ in LINK_PLATFORMS:
+        if label.strip().lower() == name.lower():
+            return icon
+    return next(icon for name, icon, _ in LINK_PLATFORMS if name == guess_link_label(url))
 
 
 def profile_city(profile: dict) -> str:
@@ -263,6 +279,8 @@ def is_profile_usable(profile: dict) -> list[str]:
         missing.append("Nachname (unter *Persönliches* eintragen)")
     if not pers.get("email"):
         missing.append("E-Mail")
+    if not pers.get("phone"):
+        missing.append("Telefonnummer")
     if not profile.get("experience") and not profile.get("education"):
         missing.append("mindestens eine Berufserfahrung oder Ausbildung")
     return missing

@@ -161,3 +161,47 @@ def test_ratings_roundtrip():
     r = js.apply_ratings(data, jobs)
     assert r == {"A": {"score": 100, "reason": "passt", "missing": ["Java", "SAP", "Go"]},
                  "C": {"score": 40, "reason": "Lücken", "missing": []}}
+
+
+@pytest.mark.parametrize("text, mode", [
+    ("Wir bieten 100 % Remote – arbeite von überall in Deutschland.", "remote"),
+    ("Die Stelle ist vollständig im Homeoffice möglich.", "remote"),
+    ("Remote-first Team, ortsunabhängig.", "remote"),
+    ("2 Tage Homeoffice pro Woche, hybrides Arbeiten.", "hybrid"),
+    ("Mobiles Arbeiten nach Absprache.", "hybrid"),
+    ("Du übernimmst den Remote-Support unserer Kunden vor Ort.", "onsite"),   # kein Homeoffice
+    ("Homeoffice ist bei dieser Stelle leider nicht möglich.", "onsite"),
+    ("Moderner Arbeitsplatz in Köln.", "onsite"),
+])
+def test_work_mode_from_ad_text(text, mode):
+    assert js.work_mode("Sachbearbeiter (m/w/d)", text) == mode
+
+
+def test_search_filters_by_work_mode(monkeypatch):
+    pool = [_job("R", "Softwareentwickler (m/w/d)"), _job("H", "Software Developer (m/w/d)"),
+            _job("O", "Softwareentwicklerin (m/w/d)")]
+    texts = {"R": "100 % remote", "H": "2 Tage Homeoffice", "O": "Arbeitsplatz in Köln"}
+    seen = []
+
+    def fake_get(path, params=None, timeout=20):
+        seen.append(dict(params))
+        return {"maxErgebnisse": 3, "ergebnisliste": pool}
+    monkeypatch.setattr(js, "_get", fake_get)
+    monkeypatch.setattr(js, "details_many", lambda jobs, workers=6: {j["ref"]: texts[j["ref"]] for j in jobs})
+
+    jobs, _ = js.search("Software", "Köln", 200, "Vollzeit", 30, work_mode=js.HOMEOFFICE)
+    assert {j["ref"] for j in jobs} == {"R", "H"}
+    assert all(p.get("wo") == "Köln" and p.get("umkreis") == 200 for p in seen)
+
+    seen.clear()
+    got, stats = {}, {}
+    jobs, _ = js.search("Software", "Köln", 25, "Vollzeit", 30, work_mode=js.REMOTE, texts=got, stats=stats)
+    assert [j["ref"] for j in jobs] == ["R"] and jobs[0]["work_mode"] == "remote"
+    assert all("wo" not in p for p in seen)                                  # remote: deutschlandweit
+    assert any(p["was"] == "Software remote" for p in seen)
+    assert got["R"] == "100 % remote" and stats == {"candidates": 3, "checked": 3}
+
+
+def test_germany_wide_radius_drops_location():
+    p = js.build_params("Software", "Köln", js.GERMANY, "Vollzeit", 30)
+    assert "wo" not in p and "umkreis" not in p

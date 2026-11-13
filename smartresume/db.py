@@ -90,6 +90,15 @@ CREATE TABLE IF NOT EXISTS login_codes (
     sent_at    REAL NOT NULL,
     attempts   INTEGER DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS documents (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       TEXT,
+    filename    TEXT,
+    pdf_bytes   BLOB NOT NULL,
+    created_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id, id);
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -266,6 +275,45 @@ def save_profile(user_id: int, data=_UNSET, photo=_UNSET, signature=_UNSET,
                         (user_id, json.dumps(empty_profile())))
         sets = ", ".join(f"{k}=?" for k in fields)
         con.execute(f"UPDATE profiles SET {sets} WHERE user_id=?", (*fields.values(), user_id))
+
+
+# ---------------------------------------------------------------------------
+# Anlagen (Zeugnisse, Zertifikate, Nachweise) – immer als PDF gespeichert
+# ---------------------------------------------------------------------------
+def add_document(user_id: int, title: str, filename: str, pdf_bytes: bytes, path=None) -> int:
+    with connect(path) as con:
+        cur = con.execute("INSERT INTO documents (user_id, title, filename, pdf_bytes, created_at) VALUES (?,?,?,?,?)",
+                          (user_id, title, filename, pdf_bytes, _now()))
+        return cur.lastrowid
+
+
+def list_documents(user_id: int, path=None) -> list[dict]:
+    """Ohne Dateiinhalt: [{'id', 'title', 'filename', 'size', 'created_at'}] in Hochlade-Reihenfolge."""
+    with connect(path) as con:
+        rows = con.execute("SELECT id, title, filename, length(pdf_bytes) AS size, created_at FROM documents "
+                           "WHERE user_id=? ORDER BY id", (user_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_documents(user_id: int, ids: list[int] | None = None, path=None) -> list[dict]:
+    """Mit Inhalt (pdf_bytes); ids=None → alle, sonst in der angegebenen Reihenfolge."""
+    with connect(path) as con:
+        rows = [dict(r) for r in con.execute("SELECT id, title, filename, pdf_bytes, created_at FROM documents "
+                                             "WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+    if ids is None:
+        return rows
+    by_id = {r["id"]: r for r in rows}
+    return [by_id[i] for i in ids if i in by_id]
+
+
+def rename_document(user_id: int, doc_id: int, title: str, path=None) -> None:
+    with connect(path) as con:
+        con.execute("UPDATE documents SET title=? WHERE id=? AND user_id=?", (title, doc_id, user_id))
+
+
+def delete_document(user_id: int, doc_id: int, path=None) -> None:
+    with connect(path) as con:
+        con.execute("DELETE FROM documents WHERE id=? AND user_id=?", (doc_id, user_id))
 
 
 # ---------------------------------------------------------------------------

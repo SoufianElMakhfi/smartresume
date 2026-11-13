@@ -37,7 +37,21 @@ def test_usable_check():
     p["education"] = [{"institution": "Schule"}]
     assert any("Nachname" in m for m in is_profile_usable(p))   # nur Vorname reicht nicht
     p["personal"]["name"] = "Anna Beispiel"
+    assert is_profile_usable(p) == ["Telefonnummer"]                  # Telefon ist Pflicht
+    p["personal"]["phone"] = "0151 2345678"
     assert is_profile_usable(p) == []
+
+
+def test_link_platforms_pick_icon_by_choice_or_address():
+    from smartresume.profile import guess_link_label, link_icon
+    assert link_icon("XING", "https://example.com/me") == "xing"            # gewählte Plattform zählt
+    assert link_icon("", "https://www.instagram.com/anna") == "instagram"   # sonst die Adresse
+    assert link_icon("Portfolio", "https://anna.dev") == "globe"
+    assert guess_link_label("https://twitter.com/anna") == "X (Twitter)"
+    assert guess_link_label("https://x.com/anna") == "X (Twitter)"
+    icons = {p.stem for p in (ROOT / "icons").glob("*.svg")}
+    from smartresume.profile import LINK_PLATFORMS
+    assert {icon for _, icon, _ in LINK_PLATFORMS} <= icons                 # jedes Icon existiert
 
 
 def test_experience_years_merges_overlaps():

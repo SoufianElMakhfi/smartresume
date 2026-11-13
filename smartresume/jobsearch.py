@@ -17,8 +17,39 @@ BASE = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
 HEADERS = {"X-API-Key": "jobboerse-jobsuche", "User-Agent": "SmartResume (Open Source)"}
 JOB_PAGE = "https://www.arbeitsagentur.de/jobsuche/jobdetail/{ref}"
 
-RADII = [0, 10, 25, 50, 100, 200]
+GERMANY = -1                                   # Umkreis „Deutschlandweit“ (die BA erlaubt höchstens 200 km)
+RADII = [0, 10, 25, 50, 100, 200, GERMANY]
 MAX_AGE = {"Heute": 0, "Letzte 7 Tage": 7, "Letzte 14 Tage": 14, "Letzte 30 Tage": 30, "Alle": 100}
+
+# Arbeitsmodell. Die BA kennzeichnet Homeoffice nicht verlässlich (und unterscheidet nicht hybrid/voll remote),
+# deshalb prüft die App den Anzeigentext selbst.
+ANY, HOMEOFFICE, REMOTE = WORK_MODES = ["Egal", "Homeoffice möglich", "Nur Remote"]
+MAX_CHECK = 300                                # so viele Anzeigen werden höchstens auf Homeoffice geprüft
+_HOME_RE = re.compile(r"home[\s-]?office|mobile[ns]?\s+arbeiten|\bhybrid|telearbeit|von zu hause|work from home|"
+                      r"\bremote\b(?![\s-]?(?:support|desktop|zugriff|wartung|access|service|management|"
+                      r"administration|anbindung))|ortsunabh(?:ä|ae)ngig", re.I)
+_NO_HOME_RE = re.compile(r"\bkein(?:e|en)?\s+(?:möglichkeit\s+(?:zum|für|auf)\s+)?(?:home[\s-]?office|remote|"
+                         r"mobiles\s+arbeiten)|(?:home[\s-]?office|remote)[^.\n]{0,30}\bnicht\s+möglich|"
+                         r"ausschließlich\s+vor\s+ort|100\s?%\s*vor\s+ort|präsenzpflicht", re.I)
+_FULL_REMOTE_RE = re.compile(r"(?:100\s?%|zu\s+100\s?%|vollständig|vollstaendig|komplett|ausschließlich|"
+                             r"ausschliesslich|fully|full)[\s-]*(?:im\s+)?(?:remote|home[\s-]?office|mobil)|"
+                             r"remote[\s-]?(?:first|only)\b|\bfull[\s-]?remote\b|ortsunabh(?:ä|ae)ngig|"
+                             r"(?:deutschlandweit|bundesweit)\s+(?:remote|im\s+home[\s-]?office)|"
+                             r"remote\s+aus\s+ganz\s+deutschland|work\s+from\s+anywhere", re.I)
+
+
+def work_mode(title: str, text: str) -> str:
+    """'remote' (komplett von zu Hause), 'hybrid' (Homeoffice möglich) oder 'onsite' (nichts erwähnt/ausgeschlossen)."""
+    t = f"{title}\n{text}"
+    full = _FULL_REMOTE_RE.search(t)
+    if _NO_HOME_RE.search(t) and not full:
+        return "onsite"
+    if full:
+        return "remote"
+    return "hybrid" if _HOME_RE.search(t) else "onsite"
+
+
+_classify = work_mode      # search() hat einen gleichnamigen Parameter
 
 # Beschäftigungsart der App → Filter der BA (angebotsart: 1 Arbeit, 2 Selbstständigkeit, 4 Ausbildung,
 # 34 Praktikum/Trainee/Werkstudent; arbeitszeit: vz, tz, mj). „title“: woran man die Art im Stellentitel erkennt
@@ -209,6 +240,8 @@ def build_params(what: str, where: str, radius: int, employment_type: str, max_a
                  page: int = 1, size: int = 25) -> dict:
     f = _FILTERS.get(employment_type, {})
     what = (what or "").strip() or f.get("word", "")
+    if radius == GERMANY:                      # deutschlandweit: ohne Ort suchen
+        where, radius = "", 0
     params = {"was": what, "wo": (where or "").strip(), "page": page, "size": size,
               "veroeffentlichtseit": max_age, "pav": "false"}
     if params["wo"] and radius:
@@ -311,20 +344,31 @@ def _fetch(specs: list[tuple[dict, int]], workers: int = 8) -> list[dict]:
 
 
 def search(what: str, where: str, radius: int = 25, employment_type: str = "Vollzeit",
-           max_age: int = 30) -> tuple[list[dict], int]:
+           max_age: int = 30, work_mode: str = ANY, texts: dict | None = None,
+           stats: dict | None = None) -> tuple[list[dict], int]:
     """Gibt (Stellen, Anzahl) zurück – nach Relevanz sortiert, Unpassendes bereits entfernt.
 
     Sucht nach dem Begriff und verwandten Begriffen des erkannten Fachgebiets; bei Werkstudent/Praktikum
     zusätzlich nach allen Stellen dieser Art im Umkreis. Danach prüft die App selbst, ob Titel bzw. Berufsangabe
-    passen – die Volltextsuche der Jobbörse liefert sonst z. B. Logistik-Jobs, deren Text „Software“ erwähnt."""
-    if not (what or "").strip() and not (where or "").strip():
+    passen – die Volltextsuche der Jobbörse liefert sonst z. B. Logistik-Jobs, deren Text „Software“ erwähnt.
+
+    work_mode: „Homeoffice möglich“ bzw. „Nur Remote“ → die Anzeigentexte der relevantesten Stellen werden geladen
+    (landen in `texts`) und geprüft. „Nur Remote“ sucht deutschlandweit – der Wohnort spielt dann keine Rolle."""
+    remote = work_mode == REMOTE
+    if remote:
+        where, radius = "", GERMANY
+    if not (what or "").strip() and not (where or "").strip() and not remote:
         raise JobSearchError("Bitte einen Suchbegriff oder Ort angeben.")
     p = plan(what)
     f = _FILTERS.get(employment_type, {})
     base = {k: v for k, v in build_params("", where, radius, employment_type, max_age, size=PAGE_SIZE).items()
             if k not in ("was", "page")}
-    specs = [({**base, "was": q}, QUERY_PAGES) for q in p["queries"]]
-    if f.get("word"):
+    if remote:   # deutschlandweit nur Anzeigen, die Remote/Homeoffice überhaupt erwähnen (Volltextsuche der BA)
+        words = p["queries"][:8] or [f.get("word", "")]
+        specs = [({**base, "was": f"{q} {h}".strip()}, QUERY_PAGES) for q in words for h in ("remote", "homeoffice")]
+    else:
+        specs = [({**base, "was": q}, QUERY_PAGES) for q in p["queries"]]
+    if f.get("word") and not remote:
         without_type = {k: v for k, v in base.items() if k != "angebotsart"}
         # Viele Anzeigen findet die BA nicht unter „Werkstudent“ („Werkstudierende“, „Studentische Hilfskraft“) –
         # deshalb zusätzlich alle Stellen der Kategorie ohne Suchwort; der Titel-Filter sortiert danach aus.
@@ -349,6 +393,16 @@ def search(what: str, where: str, radius: int = 25, employment_type: str = "Voll
             out.append(j)
     out.sort(key=lambda j: j["published"] or "", reverse=True)
     out.sort(key=lambda j: -j["relevance"])            # stabil: innerhalb gleicher Relevanz neueste zuerst
+    if work_mode in (HOMEOFFICE, REMOTE):
+        texts = texts if texts is not None else {}
+        check = out[:MAX_CHECK]
+        texts.update(details_many([j for j in check if j["ref"] not in texts], workers=10))
+        wanted = ("remote",) if remote else ("remote", "hybrid")
+        for j in check:
+            j["work_mode"] = _classify(j["title"], texts.get(j["ref"], ""))
+        if stats is not None:
+            stats.update(candidates=len(out), checked=len(check))
+        out = [j for j in check if j["work_mode"] in wanted]
     return out, len(out)
 
 

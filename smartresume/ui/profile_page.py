@@ -5,11 +5,13 @@ Lebenslauf importieren · Persönlich (mit Foto) · Werdegang · Kenntnisse · W
 from __future__ import annotations
 
 import json
+import re
 
 import streamlit as st
 
-from .. import auth, bridge, cv_import, cv_parse, db, llm
-from ..profile import empty_profile, from_legacy_master, is_profile_usable, join_name, normalize_profile
+from .. import attachments, auth, bridge, cv_import, cv_parse, db, llm
+from ..profile import (LINK_LABELS, empty_profile, from_legacy_master, guess_link_label, is_profile_usable,
+                       join_name, normalize_profile)
 from ..render import prepare_photo, prepare_signature
 from .common import (branding, chat_bridge, fallback_chain, fmt_tokens, go, model_picker, notify_switch,
                      record_usage, uid)
@@ -75,6 +77,63 @@ def _list_action(section: str, action: str, i: int = 0) -> None:
         else:
             items.append(tpl)
     _bump()
+
+
+def _add_skill() -> None:
+    """„Hinzufügen“ im Skill-Formular: nur neue Skills; vorhandene werden gemeldet statt doppelt angelegt."""
+    ss = st.session_state
+    draft = ss.draft
+    cat = (ss.get("skill_cat") or "").strip() or "Weitere Kenntnisse"
+    raw = [x.strip(" .") for x in re.split(r",(?![^()]*\))|;", ss.get("skill_new") or "")]
+    have = {i.lower(): s["category"] for s in draft["skills"] for i in s["items"]}
+    msgs = []
+    for item in (x for x in raw if x):
+        if item.lower() in have:
+            msgs.append(f"„{item}“ steht schon unter {have[item.lower()] or 'einer anderen Kategorie'} – "
+                        "nicht doppelt angelegt.")
+            continue
+        target = next((s for s in draft["skills"] if s["category"].lower() == cat.lower()), None)
+        if target is None:
+            target = {"category": cat, "items": []}
+            draft["skills"].append(target)
+        target["items"].append(item)
+        have[item.lower()] = target["category"]
+    ss.skill_msgs = msgs
+    ss.skill_new = ""                      # Eingabefeld leeren, Kategorie bleibt für den nächsten Skill
+    _bump()
+
+
+def _documents_section() -> None:
+    """Zeugnisse, Zertifikate, Nachweise als Dateien – werden beim Bewerben an die Mappe angehängt."""
+    st.markdown("##### Zeugnisse & Nachweise (Dateien)")
+    st.caption("PDF, JPG oder PNG. Beim Erstellen einer Bewerbung wählst du aus, welche angehängt werden – "
+               "in der Bewerbungsmappe hinter dem Lebenslauf oder als eigene Datei „Anlagen“.")
+    for doc in db.list_documents(uid()):
+        c1, c2, c3 = st.columns([5, 2, 1], vertical_alignment="center")
+        title = c1.text_input("Bezeichnung", doc["title"], key=f"doc{doc['id']}_title", label_visibility="collapsed",
+                              help=f"Datei: {doc['filename']}")
+        if title.strip() and title.strip() != doc["title"]:
+            db.rename_document(uid(), doc["id"], title.strip())
+        c2.caption(f"{doc['size'] / 1024 / 1024:.1f} MB" if doc["size"] >= 100_000 else f"{doc['size'] // 1024} KB")
+        if c3.button(":material/delete:", key=f"doc{doc['id']}_del", help="Entfernen"):
+            db.delete_document(uid(), doc["id"])
+            st.rerun()
+    ups = st.file_uploader("Dokumente hochladen", type=attachments.TYPES, accept_multiple_files=True,
+                           key=f"doc_up{st.session_state.get('doc_up_rev', 0)}", max_upload_size=attachments.MAX_MB,
+                           label_visibility="collapsed")
+    if ups:
+        errors = []
+        for f in ups:
+            try:
+                pdf = attachments.to_pdf(f.name, f.getvalue())
+                db.add_document(uid(), attachments.title_from_filename(f.name), f.name, pdf)
+            except attachments.AttachmentError as e:
+                errors.append(str(e))
+        st.session_state.doc_up_rev = st.session_state.get("doc_up_rev", 0) + 1   # Upload-Feld leeren
+        st.session_state.doc_errors = errors
+        st.rerun()
+    for e in st.session_state.pop("doc_errors", []):
+        st.error(e, icon=":material/error:")
 
 
 def _lines(text: str) -> list[str]:
@@ -204,30 +263,32 @@ def _personal(d: dict, new: dict, stored: dict) -> None:
     with c_form:
         c1, c2 = st.columns(2)
         p["first_name"] = c1.text_input("Vorname *", d["personal"]["first_name"], key=_k("first_name"),
-                                        placeholder="Max")
+                                        placeholder="z. B. Max")
         p["last_name"] = c2.text_input("Nachname *", d["personal"]["last_name"], key=_k("last_name"),
-                                       placeholder="Mustermann", help="Mit allen Namensteilen, z. B. „El Makhfi“ "
+                                       placeholder="z. B. Mustermann", help="Mit allen Namensteilen, z. B. „El Makhfi“ "
                                        "oder „von der Heide“. Nur ein Name? Dann nur hier eintragen.")
         p["name"] = join_name(p["first_name"], p["last_name"])
         p["headline"] = st.text_input("Berufsbezeichnung", d["personal"]["headline"], key=_k("headline"),
                                       placeholder="z. B. Wirtschaftsinformatik-Student")
         c1, c2 = st.columns(2)
         p["email"] = c1.text_input("E-Mail *", d["personal"]["email"], key=_k("email"))
-        p["phone"] = c2.text_input("Telefon", d["personal"]["phone"], key=_k("phone"))
+        p["phone"] = c2.text_input("Telefon *", d["personal"]["phone"], key=_k("phone"))
         p["street"] = c1.text_input("Straße & Nr.", d["personal"]["street"], key=_k("street"))
-        p["zip_city"] = c2.text_input("PLZ & Ort", d["personal"]["zip_city"], key=_k("zip"), placeholder="50667 Köln")
+        p["zip_city"] = c2.text_input("PLZ & Ort", d["personal"]["zip_city"], key=_k("zip"), placeholder="z. B. 50667 Köln")
 
-    st.markdown("##### Links")
-    st.caption("Portfolio, LinkedIn, GitHub, XING … – erscheinen als Symbole auf dem Deckblatt.")
+    st.markdown("##### Links & Social Media")
+    st.caption("Plattform wählen und Link einfügen. In der Bewerbungsmappe erscheinen sie als anklickbare Icons auf "
+               "dem Deckblatt und als lesbarer Text im Lebenslauf (den können Bewerbersysteme auswerten).")
     links = []
     for i, link in enumerate(d["personal"]["links"]):
         c1, c2, c3 = st.columns([2, 5, 1])
-        label = c1.text_input("Bezeichnung", link["label"], key=_k(f"link{i}_label"), placeholder="LinkedIn",
-                              label_visibility="collapsed")
-        url = c2.text_input("Adresse", link["url"], key=_k(f"link{i}_url"), placeholder="https://…",
-                            label_visibility="collapsed")
+        opts = LINK_LABELS if link["label"] in LINK_LABELS or not link["label"] else [link["label"]] + LINK_LABELS
+        label = c1.selectbox("Plattform", opts, index=opts.index(link["label"]) if link["label"] in opts else None,
+                             key=_k(f"link{i}_label"), placeholder="Plattform wählen", label_visibility="collapsed")
+        url = c2.text_input("Link", link["url"], key=_k(f"link{i}_url"), label_visibility="collapsed",
+                            placeholder="Link einfügen, z. B. linkedin.com/in/dein-name")
         c3.button(":material/delete:", key=_k(f"links{i}_del"), on_click=_list_action, args=("links", "del", i), help="Entfernen")
-        links.append({"label": label.strip(), "url": url.strip()})
+        links.append({"label": label or (guess_link_label(url) if url.strip() else ""), "url": url.strip()})
     p["links"] = links
     _add_button("links", "Link hinzufügen")
 
@@ -277,8 +338,8 @@ def _career(d: dict, new: dict) -> None:
     _add_button("experience", "Station hinzufügen")
     n = len(d["experience"])
     for i, job in enumerate(d["experience"]):
-        title = f"**{job['role'] or 'Neue Station'}** · {job['company'] or '…'}" + \
-                (f" · {job['start']}–{job['end']}" if job["start"] else "")
+        title = " · ".join(x for x in (f"**{job['role'] or 'Neue Station'}**", job["company"],
+                                        "–".join(x for x in (job["start"], job["end"]) if x)) if x)
         with st.expander(title, expanded=not job["company"]):
             e = new["experience"][i]
             c1, c2 = st.columns(2)
@@ -296,7 +357,7 @@ def _career(d: dict, new: dict) -> None:
     _add_button("education", "Ausbildung hinzufügen")
     n = len(d["education"])
     for i, ed in enumerate(d["education"]):
-        with st.expander(f"**{ed['degree'] or 'Neuer Eintrag'}** · {ed['institution'] or '…'}",
+        with st.expander(" · ".join(x for x in (f"**{ed['degree'] or 'Neuer Eintrag'}**", ed["institution"]) if x),
                          expanded=not ed["institution"]):
             e = new["education"][i]
             c1, c2 = st.columns(2)
@@ -314,39 +375,33 @@ def _career(d: dict, new: dict) -> None:
 # ── Kenntnisse ──────────────────────────────────────────────────────────────
 def _knowledge(d: dict, new: dict) -> None:
     st.markdown("##### Skills")
-    st.caption("Skill eintippen und **Enter** drücken. Die KI wählt pro Stelle nur aus diesen Einträgen aus und "
-               "erfindet keine neuen. Jeder Skill zählt nur einmal.")
-    skills, seen, dupes = [], {}, []
+    st.caption("Die KI wählt pro Stelle nur aus diesen Skills aus und erfindet keine neuen. Jeder Skill zählt nur "
+               "einmal – auch beim Erstellen der Bewerbung wird nichts doppelt aufgeführt.")
+    cats = [c["category"] for c in d["skills"] if c["category"]]
+    with st.form("skill_add", border=True):
+        c1, c2, c3 = st.columns([3, 2, 1], vertical_alignment="bottom")
+        c1.text_input("Skill hinzufügen", key="skill_new", placeholder="z. B. Excel – mehrere mit Komma trennen")
+        c2.selectbox("Kategorie", cats or ["Weitere Kenntnisse"], key="skill_cat", accept_new_options=True,
+                     placeholder="wählen oder neu eintippen", help="Neue Kategorie: Namen eintippen und Enter drücken.")
+        c3.form_submit_button("Hinzufügen", icon=":material/add:", on_click=_add_skill, use_container_width=True)
+    for msg in st.session_state.pop("skill_msgs", []):
+        st.info(msg, icon=":material/info:")
+
+    skills = []
     for i, cat in enumerate(d["skills"]):
         with st.container(border=True):
             c1, c2 = st.columns([6, 1])
-            name = c1.text_input("Kategorie", cat["category"], key=_k(f"sk{i}_cat"),
-                                 placeholder="Kategorie, z. B. Programmierung", label_visibility="collapsed")
+            name = c1.text_input("Kategorie", cat["category"], key=_k(f"sk{i}_cat"), label_visibility="collapsed",
+                                 help="Kategorie umbenennen")
             c2.button(":material/delete:", key=_k(f"skills{i}_del"), on_click=_list_action, args=("skills", "del", i),
-                      help="Kategorie entfernen")
-            items = st.multiselect("Skills", options=cat["items"], default=cat["items"], accept_new_options=True,
-                                   key=_k(f"sk{i}_items"), placeholder="Skill eintippen + Enter",
-                                   label_visibility="collapsed")
-        kept = []
-        for it in items:
-            it = it.strip()
-            if not it:
-                continue
-            if it.lower() in seen:
-                dupes.append(f"„{it}“ steht schon unter {seen[it.lower()] or 'einer anderen Kategorie'}")
-                continue
-            seen[it.lower()] = name.strip()
-            kept.append(it)
-        skills.append({"category": name.strip(), "items": kept})
+                      help="Kategorie mit allen Skills entfernen")
+            items = st.multiselect("Skills", options=cat["items"], default=cat["items"], key=_k(f"sk{i}_items"),
+                                   placeholder="", label_visibility="collapsed",
+                                   help="Mit ✕ entfernen. Neue Skills oben über „Hinzufügen“.")
+        skills.append({"category": name.strip(), "items": items})
     new["skills"] = skills
-    if dupes:   # doppelte Skills sofort entfernen und Felder neu aufbauen
-        st.session_state.draft = new
-        st.session_state.skill_dupes = dupes
-        _bump()
-        st.rerun()
-    for msg in st.session_state.pop("skill_dupes", []):
-        st.info(msg + " – nicht doppelt übernommen.", icon=":material/info:")
-    _add_button("skills", "Kategorie hinzufügen")
+    if d["skills"]:
+        st.caption("Skill entfernen: auf das ✕ am Skill klicken.")
 
     st.markdown("##### Sprachen")
     langs = []
@@ -355,18 +410,20 @@ def _knowledge(d: dict, new: dict) -> None:
         name = c1.text_input("Sprache", lang["language"], key=_k(f"lang{i}"), placeholder="z. B. Englisch",
                              label_visibility="collapsed")
         levels = LANG_LEVELS if lang["level"] in LANG_LEVELS or not lang["level"] else [lang["level"]] + LANG_LEVELS
-        level = c2.selectbox("Niveau", levels, index=levels.index(lang["level"]) if lang["level"] in levels else 3,
-                             key=_k(f"lang{i}_lvl"), label_visibility="collapsed")
+        level = c2.selectbox("Niveau", levels, index=levels.index(lang["level"]) if lang["level"] in levels else None,
+                             key=_k(f"lang{i}_lvl"), label_visibility="collapsed", placeholder="Niveau wählen")
         c3.button(":material/delete:", key=_k(f"languages{i}_del"), on_click=_list_action, args=("languages", "del", i),
                   help="Entfernen")
-        langs.append({"language": name.strip(), "level": level})
+        langs.append({"language": name.strip(), "level": level or ""})
     new["languages"] = langs
     _add_button("languages", "Sprache hinzufügen")
 
     st.markdown("##### Zertifikate & Weiterbildungen")
+    st.caption("Stehen als Text im Lebenslauf. Die Dokumente selbst (Zeugnisse, Zertifikate) lädst du darunter hoch.")
     new["certificates"] = _lines(st.text_area("Zertifikate", "\n".join(d["certificates"]), height=90,
                                               key=_k("certs"), label_visibility="collapsed",
-                                              placeholder="Eine pro Zeile, z. B. „Scrum Master (PSM I), 2025“"))
+                                              placeholder="Eine pro Zeile, z. B. Scrum Master (PSM I), 2025"))
+    _documents_section()
 
     st.markdown("##### Projekte")
     st.caption("Eigene, studentische oder berufliche Projekte – gut für Berufseinsteiger.")
@@ -378,7 +435,7 @@ def _knowledge(d: dict, new: dict) -> None:
             e["description"] = st.text_input("Worum geht es?", pr["description"], key=_k(f"prj{i}_desc"))
             e["stack"] = st.multiselect("Technologien / Werkzeuge", options=pr["stack"], default=pr["stack"],
                                         accept_new_options=True, key=_k(f"prj{i}_stack"),
-                                        placeholder="eintippen + Enter")
+                                        placeholder="z. B. Python – eintippen + Enter")
             e["highlights"] = _lines(st.text_area("Ergebnisse (eines pro Zeile)", "\n".join(pr["highlights"]),
                                                   height=80, key=_k(f"prj{i}_hl")))
             _row_tools("projects", i, n, move=False)
@@ -389,9 +446,9 @@ def _knowledge(d: dict, new: dict) -> None:
     strengths = []
     for i, s in enumerate(d["strengths"]):
         c1, c2, c3 = st.columns([2, 5, 1])
-        skill = c1.text_input("Stärke", s["skill"], key=_k(f"str{i}"), placeholder="Stärke",
+        skill = c1.text_input("Stärke", s["skill"], key=_k(f"str{i}"), placeholder="z. B. Organisation",
                               label_visibility="collapsed")
-        ev = c2.text_input("Beleg", s["evidence"], key=_k(f"str{i}_ev"), placeholder="Konkreter Beleg",
+        ev = c2.text_input("Beleg", s["evidence"], key=_k(f"str{i}_ev"), placeholder="z. B. Events mit 2.000 Gästen geplant",
                            label_visibility="collapsed")
         c3.button(":material/delete:", key=_k(f"strengths{i}_del"), on_click=_list_action, args=("strengths", "del", i),
                   help="Entfernen")
@@ -407,22 +464,22 @@ def _wishes(d: dict, new: dict, stored: dict) -> None:
     pr = new["preferences"]
     c1, c2 = st.columns(2)
     pr["availability"] = c1.text_input("Verfügbar ab", d["preferences"]["availability"], key=_k("avail"),
-                                       placeholder="sofort / 01.03.2027")
+                                       placeholder="z. B. sofort oder 01.03.2027")
     pr["notice_period"] = c2.text_input("Kündigungsfrist", d["preferences"]["notice_period"], key=_k("notice"),
-                                        placeholder="3 Monate zum Quartalsende")
+                                        placeholder="z. B. 3 Monate zum Quartalsende")
     pr["salary_expectation"] = c1.text_input("Gehaltsvorstellung", d["preferences"]["salary_expectation"],
-                                             key=_k("salary"), placeholder="45.000 € brutto jährlich")
+                                             key=_k("salary"), placeholder="z. B. 45.000 € brutto jährlich")
     pr["hours_per_week"] = c2.text_input("Wochenstunden (Teilzeit/Werkstudent)", d["preferences"]["hours_per_week"],
-                                         key=_k("hours"), placeholder="20")
+                                         key=_k("hours"), placeholder="z. B. 20")
     pr["student_status"] = st.text_input("Studium (wichtig für Werkstudentenstellen)",
                                          d["preferences"]["student_status"], key=_k("student"),
-                                         placeholder="Eingeschrieben, B.Sc. Wirtschaftsinformatik, 4. Semester")
+                                         placeholder="z. B. Eingeschrieben, B.Sc. Wirtschaftsinformatik, 4. Semester")
 
     st.markdown("##### Schreibstil (optional)")
     with st.expander("Damit das Anschreiben nach dir klingt"):
         ws = new["writing_style"]
         ws["tone"] = st.text_input("Ton", d["writing_style"]["tone"], key=_k("tone"),
-                                   placeholder="Direkt, bodenständig, kurze Sätze")
+                                   placeholder="z. B. direkt, bodenständig, kurze Sätze")
         ws["own_words"] = _lines(st.text_area("Typische Sätze von dir (einer pro Zeile)",
                                               "\n".join(d["writing_style"]["own_words"]), key=_k("own"), height=90))
         ws["philosophy"] = st.text_area("Arbeitsweise / Philosophie", d["writing_style"]["philosophy"],

@@ -1,0 +1,6 @@
+Plattform-Icons (linkedin, github, xing, instagram, x, youtube, facebook, tiktok, behance, dribbble, gitlab,
+stackoverflow, medium): Simple Icons – https://simpleicons.org – Lizenz CC0 1.0 (gemeinfrei).
+Die Marken und Logos gehören ihren jeweiligen Inhabern; sie werden nur als Verweis auf das eigene Profil
+des Bewerbers auf der jeweiligen Plattform genutzt.
+
+globe.svg: eigene Zeichnung (Projektlizenz).

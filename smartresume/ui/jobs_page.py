@@ -7,7 +7,7 @@ from .. import bridge, db, jobsearch, llm
 from ..profile import EMPLOYMENT_TYPES, default_employment_type, profile_city
 from .common import available_models, chat_bridge, fallback_chain, go, notify_switch, record_usage, uid
 
-STATE = ("jobs", "jobs_total", "jobs_texts", "jobs_query", "jobs_shown", "jobs_ratings", "jobs_manual")
+STATE = ("jobs", "jobs_total", "jobs_texts", "jobs_query", "jobs_shown", "jobs_ratings", "jobs_manual", "jobs_stats")
 PAGE = 25          # so viele Stellen auf einmal anzeigen (deren Anzeigentexte werden dann geladen)
 SORTS = ["Passung", "Neueste", "Entfernung"]
 
@@ -30,8 +30,11 @@ def _chain():
 
 
 def _run_search(query: dict) -> None:
-    jobs, total = jobsearch.search(**query)
-    st.session_state.update(jobs=jobs, jobs_total=total, jobs_texts=jobsearch.details_many(jobs[:PAGE]),
+    texts, stats = {}, {}
+    jobs, total = jobsearch.search(**query, texts=texts, stats=stats)
+    texts.update(jobsearch.details_many([j for j in jobs[:PAGE] if j["ref"] not in texts]))
+    st.session_state.jobs_stats = stats
+    st.session_state.update(jobs=jobs, jobs_total=total, jobs_texts=texts,
                             jobs_query=query, jobs_shown=PAGE, jobs_ratings={}, jobs_manual=False)
 
 
@@ -110,7 +113,11 @@ def _card(job: dict, hits: list[str], rating: dict | None, applied: bool) -> Non
         facts = []
         if job["salary"]:
             facts.append(f":material/payments: {job['salary']}")
-        if job["homeoffice"]:
+        mode = job.get("work_mode") or (jobsearch.work_mode(job["title"], st.session_state.jobs_texts[job["ref"]])
+                                        if job["ref"] in st.session_state.jobs_texts else "")
+        if mode == "remote":
+            facts.append(":material/home_work: Remote (100 % Homeoffice)")
+        elif mode == "hybrid" or job["homeoffice"]:
             facts.append(":material/home_work: Homeoffice möglich")
         if job["published"]:
             d = job["published"][:10].split("-")
@@ -154,26 +161,40 @@ def render() -> None:
         what = c1.text_input("Was?", value=saved.get("what", _default_what(profile)),
                              placeholder="z. B. Software, Marketing, Controlling, Informationssicherheit")
         where = c2.text_input("Wo?", value=saved.get("where", profile_city(profile)), placeholder="Stadt oder PLZ")
-        c3, c4, c5 = st.columns(3)
+        c3, c4 = st.columns(2)
         etype = saved.get("employment_type") or default_employment_type(profile, settings.get("gen_prefs"))
         etype = c3.selectbox("Beschäftigungsart", EMPLOYMENT_TYPES,
                              index=EMPLOYMENT_TYPES.index(etype) if etype in EMPLOYMENT_TYPES else 0)
+        modes = jobsearch.WORK_MODES
+        mode = saved.get("work_mode", jobsearch.ANY)
+        mode = c4.selectbox("Arbeitsort", modes, index=modes.index(mode) if mode in modes else 0,
+                            format_func=lambda m: {jobsearch.ANY: "Egal – vor Ort, hybrid oder remote",
+                                                   jobsearch.HOMEOFFICE: "Homeoffice möglich (hybrid oder remote)",
+                                                   jobsearch.REMOTE: "Nur Remote (100 % Homeoffice)"}[m],
+                            help="„Homeoffice möglich“: nur Stellen, in deren Anzeige Homeoffice/mobiles Arbeiten "
+                                 "steht – praktisch bei großem Umkreis. „Nur Remote“: ganz Deutschland, Ort und "
+                                 "Umkreis spielen keine Rolle.")
+        c5, c6 = st.columns(2)
         radius = saved.get("radius", 25)
-        radius = c4.selectbox("Umkreis", jobsearch.RADII, index=jobsearch.RADII.index(radius)
+        radius = c5.selectbox("Umkreis", jobsearch.RADII, index=jobsearch.RADII.index(radius)
                               if radius in jobsearch.RADII else 2,
-                              format_func=lambda r: "nur dieser Ort" if r == 0 else f"{r} km")
+                              format_func=lambda r: "nur dieser Ort" if r == 0 else "Deutschlandweit"
+                              if r == jobsearch.GERMANY else f"{r} km",
+                              help="Bei „Nur Remote“ wird immer deutschlandweit gesucht.")
         ages = list(jobsearch.MAX_AGE)
         age = saved.get("age", "Letzte 30 Tage")
-        age = c5.selectbox("Veröffentlicht", ages, index=ages.index(age) if age in ages else 3)
+        age = c6.selectbox("Veröffentlicht", ages, index=ages.index(age) if age in ages else 3)
         submitted = st.form_submit_button("Suchen", type="primary", use_container_width=True, icon=":material/search:")
 
     if submitted:
-        settings["job_search"] = {"what": what, "where": where, "employment_type": etype, "radius": radius, "age": age}
+        settings["job_search"] = {"what": what, "where": where, "employment_type": etype, "radius": radius, "age": age,
+                                  "work_mode": mode}
         db.save_user_settings(uid(), settings)
         query = {"what": what, "where": where, "radius": radius, "employment_type": etype,
-                 "max_age": jobsearch.MAX_AGE[age]}
+                 "max_age": jobsearch.MAX_AGE[age], "work_mode": mode}
         try:
-            with st.spinner("Suche Stellen …"):
+            with st.spinner("Suche Stellen …" if mode == jobsearch.ANY else
+                            "Suche Stellen und prüfe die Anzeigen auf Homeoffice/Remote – das dauert etwas …"):
                 _run_search(query)
         except jobsearch.JobSearchError as e:
             st.error(str(e))
@@ -215,6 +236,12 @@ def render() -> None:
     c1.markdown(f"**{st.session_state.jobs_total} Stellen gefunden**, {len(visible)} angezeigt")
     if fields:
         c1.caption("Fachgebiet erkannt: " + ", ".join(fields) + " – verwandte Begriffe wurden mitgesucht.")
+    stats = st.session_state.get("jobs_stats") or {}
+    if stats.get("checked"):
+        what = "komplett remote" if query.get("work_mode") == jobsearch.REMOTE else "mit Homeoffice"
+        more = f" (die {stats['checked']} passendsten von {stats['candidates']})" \
+            if stats["candidates"] > stats["checked"] else ""
+        c1.caption(f"Nur Stellen {what} – erkannt am Anzeigentext{more}.")
     unrated = sum(1 for j in visible if j["ref"] not in ratings)
     if unrated and not st.session_state.get("jobs_manual"):
         if c2.button(f"KI-Passung prüfen ({min(unrated, PAGE)} Stellen)", use_container_width=True,

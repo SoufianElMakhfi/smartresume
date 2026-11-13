@@ -2,7 +2,8 @@
 
 Wichtig für die Store-App: Windows löscht beim Deinstallieren alle Daten der App. Mit dieser Datei kommt
 alles zurück (auch auf einem neuen PC): Profil, Foto, Unterschrift, gespeicherter Lebenslauf-Text,
-Einstellungen und alle Bewerbungen samt PDF. Die PDFs liegen zusätzlich lesbar im Ordner „Bewerbungen/“.
+Einstellungen, alle Bewerbungen samt PDF und die Anlagen (Zeugnisse, Zertifikate). Die PDFs liegen zusätzlich
+lesbar in den Ordnern „Bewerbungen/“ und „Anlagen/“.
 
 Nicht enthalten: das Mail-Passwort (ist an diesen PC gebunden, siehe secret.py) und KI-Keys.
 """
@@ -66,6 +67,13 @@ def export_user(user_id: int, path=None) -> bytes:
                 z.writestr(entry["pdf"], pdf)
             apps.append(entry)
         z.writestr("bewerbungen.json", json.dumps(apps, ensure_ascii=False, indent=2))
+        docs = []
+        for i, d in enumerate(db.get_documents(user_id, path=path), 1):
+            entry = {"title": d["title"], "filename": d["filename"],
+                     "pdf": f"Anlagen/{i:03d} {_safe(d['title'])}.pdf"}
+            z.writestr(entry["pdf"], d["pdf_bytes"])
+            docs.append(entry)
+        z.writestr("anlagen.json", json.dumps(docs, ensure_ascii=False, indent=2))
     return buf.getvalue()
 
 
@@ -117,4 +125,9 @@ def import_user(user_id: int, data: bytes, path=None) -> dict:
                 (user_id, *[a.get(k) if k != "structured_data" else
                             (sd if isinstance(sd, str) or sd is None else json.dumps(sd, ensure_ascii=False))
                             for k in _APP_FIELDS], pdf))
+        if "anlagen.json" in names:                         # ältere Sicherungen haben noch keine Anlagen
+            con.execute("DELETE FROM documents WHERE user_id=?", (user_id,))
+    for d in json.loads(z.read("anlagen.json")) if "anlagen.json" in names else []:
+        if d.get("pdf") in names:
+            db.add_document(user_id, d.get("title") or "Anlage", d.get("filename") or "", z.read(d["pdf"]), path)
     return info

@@ -8,7 +8,7 @@ from datetime import date
 
 import streamlit as st
 
-from .. import ats, auth, bridge, db, generate, llm, mailer, quality, render
+from .. import attachments, ats, auth, bridge, db, generate, llm, mailer, quality, render
 from ..profile import EMPLOYMENT_TYPES, add_skills, default_employment_type, is_profile_usable
 from ..scrape import ScrapeError, scrape_url
 from .common import (branding, chat_bridge, check_limit, fallback_chain, fmt_tokens, go, model_picker,
@@ -16,7 +16,7 @@ from .common import (branding, chat_bridge, check_limit, fallback_chain, fmt_tok
 
 GEN_KEYS = ("gen_step", "gen", "gen_pdf", "gen_app_id", "gen_factcheck", "gen_manual", "repair_manual",
             "gen_sent", "gen_mail_to", "gen_mail_subject", "gen_mail_body", "gen_mail_copy", "gen_saved",
-            "gen_format")
+            "gen_format", "gen_attach")
 MANUAL_LABEL = "Gemini/ChatGPT (Abo-Modus)"
 SWITCH = "Kein Problem – weiter geht es kostenlos mit deinem Gemini- oder ChatGPT-Konto."
 
@@ -425,16 +425,42 @@ def _autosave(g: dict, s: dict, pdf: bytes) -> int:
     return app_id
 
 
-def _documents(prof: dict, cl: dict, pdf: bytes, separate: bool) -> list[tuple[bytes, str]]:
-    """[(pdf, dateiname)] im gewählten Format."""
+def _documents(prof: dict, cl: dict, pdf: bytes, separate: bool,
+               extra: bytes | None = None) -> list[tuple[bytes, str]]:
+    """[(pdf, dateiname)] im gewählten Format. `extra` = Anlagen (Zeugnisse …) als eine PDF: in der Mappe hinter
+    dem Lebenslauf, bei getrennten Dateien als eigene Datei „Anlagen“ (Portale haben dafür ein eigenes Feld)."""
     if separate:
         try:
             letter_pdf, cv_pdf = render.split_pdf(pdf)
-            return [(letter_pdf, _file_name(prof["data"], cl.get("company"), "Anschreiben")),
+            docs = [(letter_pdf, _file_name(prof["data"], cl.get("company"), "Anschreiben")),
                     (cv_pdf, _file_name(prof["data"], cl.get("company"), "Lebenslauf"))]
+            if extra:
+                docs.append((extra, _file_name(prof["data"], cl.get("company"), "Anlagen")))
+            return docs
         except Exception:  # noqa: BLE001 – Aufteilen fehlgeschlagen → komplette Mappe
             st.warning("Die Mappe ließ sich nicht aufteilen – es wird die komplette PDF verwendet.")
+    if extra:
+        pdf = attachments.merge([pdf, extra])
     return [(pdf, _file_name(prof["data"], cl.get("company")))]
+
+
+def _attachments_pick() -> bytes | None:
+    """Auswahl der Anlagen (Zeugnisse, Zertifikate) für diese Bewerbung → eine PDF oder None."""
+    docs = db.list_documents(uid())
+    if not docs:
+        st.caption(":material/attach_file: Zeugnisse oder Zertifikate anhängen? Unter **Mein Profil → Kenntnisse** "
+                   "hochladen – dann kannst du sie hier auswählen.")
+        return None
+    ids = [d["id"] for d in docs]
+    titles = {d["id"]: d["title"] for d in docs}
+    st.session_state.setdefault("gen_attach", ids)
+    st.session_state.gen_attach = [i for i in st.session_state.gen_attach if i in ids]
+    picked = st.multiselect("Anlagen (Zeugnisse, Zertifikate, Nachweise)", ids, key="gen_attach",
+                            format_func=lambda i: titles[i], placeholder="Keine Anlagen",
+                            help="Reihenfolge wie ausgewählt. Verwalten unter Mein Profil → Kenntnisse.")
+    if not picked:
+        return None
+    return attachments.merge([d["pdf_bytes"] for d in db.get_documents(uid(), picked)])
 
 
 def _done() -> None:
@@ -472,7 +498,8 @@ def _done() -> None:
     st.caption("Getrennt = Anschreiben und Lebenslauf als zwei Dateien (das Deckblatt entfällt) – für Portale mit "
                "einzelnen Upload-Feldern." if separate else
                "Deckblatt, Anschreiben und Lebenslauf in einer Datei – Standard für Bewerbungen per E-Mail.")
-    docs = _documents(prof, cl, pdf, separate)
+    extra = _attachments_pick()
+    docs = _documents(prof, cl, pdf, separate, extra)
 
     st.divider()
     _send_section(g, s, prof, docs)
@@ -486,6 +513,8 @@ def _done() -> None:
             label = "Anschreiben"
         elif name.startswith("Lebenslauf"):
             label = "Lebenslauf"
+        elif name.startswith("Anlagen"):
+            label = "Anlagen"
         else:
             label = "Bewerbungsmappe (PDF)"
         col.download_button(label, data, file_name=name, mime="application/pdf", type="primary",

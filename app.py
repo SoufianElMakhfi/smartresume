@@ -33,6 +33,9 @@ st.markdown("""<style>
     content: "Datei auswählen"; font-size: 0.875rem; }
   [data-testid="stFileUploaderDropzoneInstructions"] span { font-size: 0; }
   [data-testid="stFileUploaderDropzoneInstructions"] span::after { content: "oder hierher ziehen"; font-size: 0.875rem; }
+  /* Platzhalter = nur Beispiel: blass und kursiv, verschwindet beim Hineinklicken */
+  input::placeholder, textarea::placeholder { font-style: italic; opacity: 0.55; }
+  input:focus::placeholder, textarea:focus::placeholder { color: transparent !important; opacity: 0; }
 </style>""", unsafe_allow_html=True)
 
 db.init_db()
