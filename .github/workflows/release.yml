@@ -9,6 +9,12 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      store:
+        description: "In den Microsoft Store hochladen?"
+        type: choice
+        options: ["nein", "nur Entwurf", "einreichen"]
+        default: "nein"
 
 permissions:
   contents: read
@@ -59,3 +65,50 @@ jobs:
           name: SmartResume-msix
           path: dist/*.msix
           retention-days: 7
+
+  # Lädt die geprüfte .msix per Microsoft Store Developer CLI in Partner Center hoch und reicht sie zur
+  # Zertifizierung ein. Läuft nur nach bestandenen Tests + Selbsttests – bei Tag-Push automatisch, manuell nur mit
+  # Auswahl „nur Entwurf“ (Paket hochladen, Einreichung bleibt Entwurf) oder „einreichen“.
+  # Zugang (einmalig einrichten, siehe .claude/skills/release-bauen/SKILL.md): Repository-Secrets
+  # PARTNER_CENTER_TENANT_ID, PARTNER_CENTER_SELLER_ID, PARTNER_CENTER_CLIENT_ID, PARTNER_CENTER_CLIENT_SECRET.
+  publish-store:
+    needs: [build-exe, build-msix]
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.store != 'nein')
+    runs-on: windows-latest
+    environment: microsoft-store
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: SmartResume-msix
+          path: dist
+      - name: Store-Zugang vorhanden?
+        shell: pwsh
+        env:
+          T: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          S: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          C: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          K: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+        run: |
+          if (-not ($env:T -and $env:S -and $env:C -and $env:K)) {
+            Write-Error "Store-Zugang fehlt: Secrets PARTNER_CENTER_* im Repository anlegen."; exit 1 }
+      - uses: microsoft/microsoft-store-apppublisher@v1.4
+      - name: Anmelden
+        shell: pwsh
+        run: >
+          msstore reconfigure
+          --tenantId "${{ secrets.PARTNER_CENTER_TENANT_ID }}"
+          --sellerId "${{ secrets.PARTNER_CENTER_SELLER_ID }}"
+          --clientId "${{ secrets.PARTNER_CENTER_CLIENT_ID }}"
+          --clientSecret "${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}"
+      - name: Hochladen und einreichen
+        shell: pwsh
+        run: |
+          $msix = (Get-ChildItem dist\*.msix | Select-Object -First 1).FullName
+          $storeId = (Get-Content packaging\store.json -Raw | ConvertFrom-Json).store_id
+          $cmd = @("publish", $msix, "-i", $msix, "-id", $storeId, "-v")
+          $draft = "${{ inputs.store }}" -eq "nur Entwurf"
+          if ($draft) { $cmd += "--noCommit" }
+          Write-Output "Lade $msix für $storeId hoch – $(if ($draft) { 'nur Entwurf' } else { 'wird eingereicht' })"
+          & msstore @cmd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
