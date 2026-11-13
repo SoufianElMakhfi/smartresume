@@ -31,15 +31,28 @@ Gebaut wird auf GitHub (Workflow `.github/workflows/release.yml`, ausgelöst dur
    ```
    Fehlgeschlagen → `gh run view <run-id> --log-failed`, Ursache beheben, neuen Patch-Tag (Tags nie überschreiben
    oder force-pushen).
-6. **Paket holen:**
+6. **Store:** Der Job `publish-store` lädt die geprüfte `.msix` bei jedem Tag automatisch hoch und reicht sie zur
+   Zertifizierung ein (Microsoft prüft danach 1–3 Tage). Erfolg prüfen:
+   ```
+   gh run view <run-id> --log --job publish-store
+   ```
+   Manuell ohne Tag (Actions → Release → Run workflow): Auswahl `nur Entwurf` (hochladen, im Partner Center
+   selbst einreichen) oder `einreichen`.
+7. **Fehlt der Store-Zugang** (Job meldet „Store-Zugang fehlt“) → Paket holen und von Hand hochladen:
    ```
    gh run download <run-id> -n SmartResume-msix -D dist
    ```
-   Das Artefakt ist nur 7 Tage verfügbar.
-7. **Dem Nutzer die Einreichung häppchenweise erklären** (jeden Schritt einzeln, Kopierbares als Codeblock):
-   Partner Center öffnen (`https://partner.microsoft.com/dashboard`) → App SmartResume → neue Übermittlung →
-   „Pakete“ → `dist\SmartResume-X.Y.Z.0.msix` hochladen → bei Bedarf Texte aus `packaging/STORE_LISTING.md`
-   aktualisieren → „An den Store übermitteln“.
+   Partner Center → App SmartResume → neue Übermittlung → „Pakete“ → `.msix` hochladen → einreichen.
+   Texte für die Store-Seite: `packaging/STORE_LISTING.md`.
+
+## Store-Zugang (einmalig)
+Repository-Secrets `PARTNER_CENTER_TENANT_ID`, `PARTNER_CENTER_SELLER_ID`, `PARTNER_CENTER_CLIENT_ID`,
+`PARTNER_CENTER_CLIENT_SECRET` aus einer Microsoft-Entra-Anwendung mit Rolle „Manager“ (Partner Center →
+Kontoeinstellungen → Benutzerverwaltung → Microsoft Entra-Anwendungen). Der Client-Secret läuft ab (max. 2 Jahre)
+– dann neuen Schlüssel anlegen und Secret ersetzen. Secrets setzt der Nutzer selbst (Wert nie in den Chat):
+```
+gh secret set PARTNER_CENTER_CLIENT_SECRET
+```
 
 ## Notlösung: lokal bauen
 Nur wenn GitHub Actions nicht geht. Braucht `pyinstaller` in der .venv und für .msix das Windows SDK (makeappx).
