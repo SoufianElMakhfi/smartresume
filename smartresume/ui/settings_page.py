@@ -46,6 +46,24 @@ def render() -> None:
         st.rerun()
 
 
+def _test_mail(acc: dict, key: str) -> None:
+    """Empfänger + „Testmail senden“: prüft, ob Mails über das Konto wirklich ankommen."""
+    c1, c2 = st.columns([3, 2], vertical_alignment="bottom")
+    to = c1.text_input("Testmail an", value=acc.get("address", ""), key=f"test_to_{key}",
+                       help="Am besten auch einmal an eine andere Adresse (z. B. ein zweites Postfach) – "
+                            "dann siehst du, ob Mails auch außerhalb deines Postfachs ankommen.").strip()
+    if c2.button("Testmail senden", key=f"test_send_{key}", use_container_width=True, icon=":material/send:",
+                 disabled=not mailer.account_ready(acc)):
+        try:
+            with st.spinner("Sende Testmail …"):
+                name = (db.get_profile(uid())["data"].get("personal") or {}).get("name", "")
+                mailer.send(acc, mailer.build_test_message(acc, name, to))
+            st.success(f"Testmail an **{to}** gesendet – schau in dein Postfach (auch in den Spam-Ordner). "
+                       "Kommt sie an, kommen auch deine Bewerbungen an.", icon=":material/mark_email_read:")
+        except mailer.MailError as e:
+            st.error(str(e), icon=":material/error:")
+
+
 def _mail_section(settings: dict) -> None:
     st.subheader("E-Mail-Versand")
     acc = settings.get("mail") or {}
@@ -53,6 +71,7 @@ def _mail_section(settings: dict) -> None:
     if ready:
         st.success(f"Eingerichtet: Bewerbungen werden von **{acc['address']}** gesendet.",
                    icon=":material/check_circle:")
+        _test_mail(acc, "saved")
     st.caption("Einmal verbunden, verschickst du Bewerbungen mit einem Klick direkt aus SmartResume – über dein "
                "eigenes Postfach, mit PDF im Anhang. Dauert etwa 2 Minuten. Ohne Verbindung geht es auch: Bei "
                "der fertigen Bewerbung gibt es einen **Entwurf mit Anhang** für Outlook, Thunderbird & Co. und "
@@ -107,6 +126,8 @@ def _mail_section(settings: dict) -> None:
             settings.pop("mail", None)
             db.save_user_settings(uid(), settings)
             st.rerun()
+        if not ready:                      # vor dem Speichern ausprobieren (danach steht es oben)
+            _test_mail(new, "new")
         st.caption("Das Passwort bleibt auf diesem PC – verschlüsselt und nur mit deinem Windows-Konto lesbar – und wird nur zum "
                    "Versenden deiner Bewerbungen benutzt. Ein App-Passwort kannst du jederzeit beim Anbieter "
                    "widerrufen.")

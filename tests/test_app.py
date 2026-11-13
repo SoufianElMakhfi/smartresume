@@ -607,6 +607,15 @@ def test_settings_mail_account(env, monkeypatch):
     _run(at)
     assert db.get_user_settings(uid)["mail"]["password"] == "abcd efgh ijkl mnop"
 
+    sent = []                                                  # Testmail wirklich senden (an andere Adresse)
+    monkeypatch.setattr(mailer, "send", lambda acc, msg: sent.append(msg))
+    next(t for t in at.text_input if t.label == "Testmail an").input("zweit@web.de")
+    _run(at)
+    _btn(at, "Testmail senden").click()
+    _run(at)
+    assert sent and sent[0]["To"] == "zweit@web.de" and "Testmail" in sent[0]["Subject"]
+    assert any("Testmail an" in s.value for s in at.success)
+
 
 def _progress_text(at):
     import re as _re

@@ -150,12 +150,11 @@
   v(2pt)
 }
 
-// Name + „Lebenslauf“ oben: Wird der Lebenslauf einzeln hochgeladen, erkennt jedes Bewerbersystem, von wem er ist.
-#text(size: 20pt, weight: 700)[#P.name]
-#v(-6pt)
-#text(size: 11pt, weight: 600, fill: accent)[#L.cv]
-#v(-4pt)
-#text(size: 9pt, fill: muted)[#P.contact_line]
+// „Lebenslauf“ groß, darunter Name und Kontakt in einer grauen Zeile – der Name steht damit weiter als Text oben,
+// so erkennt jedes Bewerbersystem auch einen einzeln hochgeladenen Lebenslauf.
+#text(size: 20pt, weight: 700)[#L.cv]
+#v(-7pt)
+#text(size: 9pt, fill: muted)[#(P.name, P.contact_line).filter(x => x != "").join("  ·  ")]
 // Links als lesbarer Text (Symbole allein kann Bewerber-Software nicht lesen)
 #if data.show_links and P.links_line != "" [
   #v(-6pt)

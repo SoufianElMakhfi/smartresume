@@ -87,6 +87,15 @@ def test_send_and_errors(monkeypatch):
     assert mailer.account_ready(ACC) and not mailer.account_ready({**ACC, "password": ""})
 
 
+def test_test_message():
+    msg = mailer.build_test_message(ACC, "Max Mustermann", "zweit@web.de")
+    assert msg["To"] == "zweit@web.de" and "Max Mustermann" in msg["From"]
+    assert msg["Subject"].startswith("SmartResume – Testmail") and not list(msg.iter_attachments())
+    assert ACC["address"] in msg.get_content()
+    with pytest.raises(mailer.MailError):
+        mailer.build_test_message(ACC, "", "keine-adresse")
+
+
 def test_body_is_always_formal():
     prof = {"personal": {"name": "Max Mustermann"}}
     for sal in ("Hallo Max,", "Liebe Anna,", "", None):

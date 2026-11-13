@@ -238,6 +238,16 @@ def test_account(acc: dict) -> None:
         pass
 
 
+def build_test_message(acc: dict, sender_name: str, to: str) -> EmailMessage:
+    """Echte Testmail – zeigt, ob Mails über das Konto wirklich beim Empfänger ankommen (nicht nur die Anmeldung)."""
+    from datetime import datetime
+    now = datetime.now().strftime("%d.%m.%Y, %H:%M Uhr")
+    body = (f"Hallo,\n\ndas ist eine Testmail aus SmartResume, gesendet am {now} über {acc['address']} "
+            f"({acc['host']}).\n\nWenn du sie liest, klappt der Versand: Bewerbungen kommen genauso an.\n"
+            "Tipp: Landet sie im Spam-Ordner, markiere sie dort als „Kein Spam“.\n")
+    return build_message(acc, sender_name, to, f"SmartResume – Testmail ({now})", body, [])
+
+
 def send(acc: dict, msg: EmailMessage) -> None:
     server = _connect(acc)
     try:

@@ -68,7 +68,8 @@ def test_pdf_is_ats_friendly_and_splits():
     assert "MS Excel" in r.metadata["/Keywords"]
     letter, cv = render.split_pdf(pdf)
     cv_text = PdfReader(io.BytesIO(cv)).pages[0].extract_text()
-    assert cv_text.splitlines()[:2] == ["Anna Beispiel", "Lebenslauf"]      # Name auf dem einzelnen Lebenslauf
+    lines = cv_text.splitlines()
+    assert lines[0] == "Lebenslauf" and lines[1].startswith("Anna Beispiel")   # Name auf dem einzelnen Lebenslauf
     assert "linkedin.com/in/anna" in cv_text                                # Link als Text lesbar
     assert "Sehr geehrte" in PdfReader(io.BytesIO(letter)).pages[0].extract_text()
     assert len(PdfReader(io.BytesIO(letter)).pages) + len(PdfReader(io.BytesIO(cv)).pages) == len(r.pages) - 1
