@@ -90,6 +90,41 @@ def fmt_tokens(n: int) -> str:
     return f"{n:,}".replace(",", ".")
 
 
+def status_strip() -> None:
+    """Überblick auf einen Blick: Was ist schon angelegt? Profil · KI · Bewerbungen – jeweils mit Sprung dorthin."""
+    from ..profile import is_profile_usable
+    prof = db.get_profile(uid())
+    missing = is_profile_usable(prof["data"])
+    models = available_models()
+    apps = db.list_applications(uid())
+    sent = sum(1 for a in apps if a.get("status") not in ("Erstellt", None, ""))
+    with st.container(border=True):
+        c1, c2, c3 = st.columns(3)
+        if missing:
+            c1.markdown(f":orange[:material/person:] **Profil** · fehlt: {', '.join(missing[:2])}")
+        else:
+            c1.markdown(":green[:material/check_circle:] **Profil** vollständig" +
+                        (f" · Lebenslauf: {prof['cv_filename']}" if prof["cv_filename"] else ""))
+        if c1.button("Profil öffnen", key="strip_profile", icon=":material/arrow_forward:", type="tertiary"):
+            go("profile")
+        if models:
+            c2.markdown(f":green[:material/bolt:] **KI automatisch** · {models[0][0]['label']}")
+        else:
+            c2.markdown(":orange[:material/content_paste:] **KI per Kopieren & Einfügen**")
+            if auth_can_configure() and c2.button("Key eintragen", key="strip_setup", icon=":material/key:",
+                                                  type="tertiary"):
+                go("setup")
+        c3.markdown(f":material/folder_open: **{len(apps)} Bewerbung{'en' if len(apps) != 1 else ''}**"
+                    + (f" · {sent} versendet" if apps else " · noch keine"))
+        if apps and c3.button("Ansehen", key="strip_apps", icon=":material/arrow_forward:", type="tertiary"):
+            go("tracking")
+
+
+def auth_can_configure() -> bool:
+    from .. import auth
+    return auth.can_configure_ai(st.session_state.get("user"))
+
+
 def show_findings(findings: list[dict]) -> None:
     errors = [f for f in findings if f["level"] == "error"]
     warns = [f for f in findings if f["level"] == "warn"]
@@ -188,33 +223,36 @@ def _copy_buttons(prompt: str) -> None:
 
 
 def chat_bridge(prompt: str, key: str, validate=None, submit: str = "Antwort übernehmen") -> dict | None:
-    """Abo-Modus für einen KI-Auftrag in drei klaren Schritten. Gibt das geprüfte JSON zurück, sobald eine
-    verwertbare Antwort eingefügt wurde, sonst None."""
-    st.markdown("**Schritt 1 · Auftrag kopieren**")
-    st.caption("Der Auftrag enthält alle nötigen Daten und Regeln. Der Knopf kopiert ihn und öffnet den Chat "
-               "in einem neuen Tab.")
-    _copy_buttons(prompt)
-    with st.expander("Auftrag selbst markieren und kopieren", icon=":material/content_copy:"):
-        st.code(prompt, language=None, wrap_lines=True)
-    st.markdown("**Schritt 2 · Im Chat einfügen und abschicken**")
-    st.caption("Im Eingabefeld von Gemini bzw. ChatGPT mit Strg+V einfügen, abschicken und warten, bis die "
-               "Antwort fertig geschrieben ist.")
-    st.markdown("**Schritt 3 · Antwort hier einfügen**")
+    """Abo-Modus für einen KI-Auftrag in zwei Schritten (Auftrag rüber, Antwort zurück). Gibt das geprüfte JSON
+    zurück, sobald eine verwertbare Antwort eingefügt und übernommen wurde, sonst None."""
     # Eingefügte Antwort sofort merken (gebunden an genau diesen Auftrag): Streamlit verwirft den Feldinhalt,
     # sobald man den Reiter oder die Seite wechselt – dann stünde man vor einem leeren Feld.
     field, saved = f"bridge_answer_{key}", f"bridge_saved_{key}"
     tag = hashlib.sha1(prompt.encode("utf-8")).hexdigest()
     kept_tag, kept = st.session_state.get(saved) or ("", "")
+    has_answer = kept_tag == tag and bool(kept.strip())
+
+    # Wo stehe ich? Eine Zeile, immer sichtbar
+    if has_answer:
+        st.markdown(":green[:material/check_circle:] **Antwort ist eingefügt** – unten auf „" + submit +
+                    "“ klicken.")
+    else:
+        st.markdown(":orange[:material/hourglass_top:] **Wartet auf die Antwort aus Gemini/ChatGPT**")
+
+    st.markdown("**1 · Auftrag kopieren** – öffnet den Chat; dort mit Strg+V einfügen, abschicken, Antwort "
+                "abwarten.")
+    _copy_buttons(prompt)
+    with st.expander("Auftrag selbst markieren und kopieren", icon=":material/content_copy:"):
+        st.code(prompt, language=None, wrap_lines=True)
+
+    st.markdown("**2 · Antwort hier einfügen** – im Chat unter der Antwort aufs Kopieren-Symbol klicken.")
 
     def _keep():
         st.session_state[saved] = (tag, st.session_state.get(field, ""))
     answer = st.text_area("Antwort aus dem Chat", value=kept if kept_tag == tag else "", height=160, key=field,
                           label_visibility="collapsed", on_change=_keep,
-                          placeholder="Unter der Antwort auf das Kopieren-Symbol klicken und hier mit Strg+V "
-                                      "einfügen.")
-    if kept_tag == tag and kept.strip():
-        st.caption(":material/save: Deine eingefügte Antwort ist gemerkt – auch wenn du zwischendurch den Reiter "
-                   "wechselst.")
+                          placeholder="Hier mit Strg+V einfügen. Bleibt gespeichert, auch wenn du den Reiter "
+                                      "wechselst.")
     if not st.button(submit, type="primary", use_container_width=True, icon=":material/check:",
                      key=f"bridge_submit_{key}"):
         return None

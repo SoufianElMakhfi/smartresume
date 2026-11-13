@@ -117,6 +117,10 @@ def server_args(port: int) -> list[str]:
         "--global.developmentMode", "false",
         "--client.toolbarMode", "viewer",   # kein „Deploy“-Knopf / Entwicklermenü
         "--theme.primaryColor", ACCENT,     # Petrol statt Streamlit-Rot
+        "--theme.base", "light",            # immer hell, dunkle Schrift (auch bei Windows-Dunkelmodus)
+        "--theme.backgroundColor", "#FFFFFF",
+        "--theme.secondaryBackgroundColor", "#EEF3F4",
+        "--theme.textColor", "#1B2329",
         "--logger.level", "error",
     ]
 

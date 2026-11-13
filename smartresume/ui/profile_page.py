@@ -554,6 +554,12 @@ def _cv_import(stored: dict) -> None:
         return
 
     st.markdown("#### Profil aus deinem Lebenslauf füllen")
+    d = st.session_state.draft
+    if stored["cv_text"]:            # Schon erledigt? Auf einen Blick, damit niemand doppelt importiert
+        st.markdown(f":green[:material/check_circle:] **Bereits importiert:** {stored['cv_filename']} → "
+                    f"{len(d['experience'])} Stationen, {len(d['education'])} Ausbildungen, "
+                    f"{sum(len(s['items']) for s in d['skills'])} Skills im Profil. Nur nötig, wenn du einen "
+                    "neueren Lebenslauf hast.")
     st.caption("Lade deinen vorhandenen Lebenslauf hoch. SmartResume liest ihn aus und trägt Kontaktdaten, "
                "Werdegang, Ausbildung, Skills und Sprachen in die Bereiche dieses Profils ein – du prüfst danach nur "
                "noch und ergänzt, was fehlt. Kein Lebenslauf zur Hand? Dann die Bereiche einfach selbst ausfüllen.")

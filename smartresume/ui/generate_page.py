@@ -8,11 +8,11 @@ from datetime import date
 
 import streamlit as st
 
-from .. import attachments, ats, auth, bridge, db, generate, llm, mailer, quality, render
+from .. import attachments, ats, bridge, db, generate, llm, mailer, quality, render
 from ..profile import EMPLOYMENT_TYPES, add_skills, default_employment_type, is_profile_usable
 from ..scrape import ScrapeError, scrape_url
 from .common import (branding, chat_bridge, check_limit, fallback_chain, fmt_tokens, go, model_picker,
-                     notify_switch, record_usage, report_url, show_findings, uid)
+                     notify_switch, record_usage, report_url, show_findings, status_strip, uid)
 
 GEN_KEYS = ("gen_step", "gen", "gen_pdf", "gen_app_id", "gen_factcheck", "gen_manual", "repair_manual",
             "gen_sent", "gen_mail_to", "gen_mail_subject", "gen_mail_body", "gen_mail_copy", "gen_saved",
@@ -49,6 +49,7 @@ def render_page() -> None:
 # ---------------------------------------------------------------------------
 def _input() -> None:
     st.title("Neue Bewerbung")
+    status_strip()
     prof = db.get_profile(uid())
     profile = prof["data"]
     missing = is_profile_usable(profile)
@@ -61,13 +62,8 @@ def _input() -> None:
 
     picked = model_picker()
     if picked is None:
-        st.info("**Es ist noch keine KI verbunden.** Du erstellst die Bewerbung trotzdem kostenlos – mit deinem "
-                "eigenen **Gemini**- oder **ChatGPT**-Konto: SmartResume erstellt einen fertigen Auftrag, du fügst "
-                "ihn dort ein und kopierst die Antwort zurück. Daraus entsteht hier das fertige PDF.",
-                icon=":material/info:")
-        if auth.can_configure_ai(st.session_state.user) and st.button("Stattdessen KI verbinden – kostenlos, 2 Minuten",
-                                                               icon=":material/key:"):
-            go("setup")
+        st.caption(":material/info: Ohne API-Key erstellst du die Bewerbung kostenlos über dein Gemini- oder "
+                   "ChatGPT-Konto: Auftrag kopieren, dort einfügen, Antwort zurückkopieren – fertig ist das PDF.")
     prefs = db.get_user_settings(uid()).get("gen_prefs") or {}
     # Zuletzt gewählte Beschäftigungsart merken; ohne Vorgabe: Werkstudent, wenn ein Studium im Profil steht.
     # (Kann auch von „Jobs finden“ vorbelegt sein.)
@@ -472,61 +468,61 @@ def _done() -> None:
     app_id = _autosave(g, s, pdf)
     app = next((a for a in db.list_applications(uid()) if a["id"] == app_id), {})
 
-    st.title("Fertig")
-    st.caption(":material/cloud_done: Automatisch gespeichert unter „Meine Bewerbungen“ – mit Stellenanzeige und PDF.")
+    company = cl.get("company") or "das Unternehmen"
+    st.title(f"Bewerbung an {company} ist fertig")
+    # Status auf einen Blick: was ist erledigt, was fehlt noch?
+    sent = app.get("status") not in (None, "", "Erstellt")
+    c1, c2, c3 = st.columns(3)
+    c1.markdown(":green[:material/check_circle:] **Erstellt**")
+    c2.markdown(":green[:material/check_circle:] **Gespeichert** in „Meine Bewerbungen“")
+    c3.markdown(f":green[:material/check_circle:] **{app.get('status')}** · {app.get('applied_at', '')}" if sent
+                else ":orange[:material/radio_button_unchecked:] **Noch nicht versendet**")
     pages = render.count_pages(pdf)
     if pages != 3:
         st.warning(f"Das PDF hat {pages} statt 3 Seiten – vermutlich ist das Anschreiben oder der Lebenslauf "
-                   "zu lang. Unter 'Bearbeiten' kürzen.")
-    c1, c2 = st.columns(2)
+                   "zu lang. Unten auf „Bearbeiten“ klicken und kürzen.")
+
+    # Unterlagen-Format + Anlagen bestimmen, was versendet bzw. heruntergeladen wird – Auswahl kompakt vorab
+    settings = db.get_user_settings(uid())
+    st.session_state.setdefault("gen_format", _saved_format(settings.get("pdf_format")))
+    with st.container(border=True):
+        st.markdown("**Unterlagen**")
+        fmt = st.segmented_control("Format", FORMATS, key="gen_format", label_visibility="collapsed") or FORMATS[0]
+        if fmt != settings.get("pdf_format"):
+            settings["pdf_format"] = fmt
+            db.save_user_settings(uid(), settings)
+        separate = fmt == FORMATS[1]
+        st.caption("Anschreiben und Lebenslauf als zwei Dateien (ohne Deckblatt) – für Portale mit einzelnen "
+                   "Upload-Feldern." if separate else
+                   "Deckblatt, Anschreiben und Lebenslauf in einer Datei – Standard für Bewerbungen per E-Mail.")
+        extra = _attachments_pick()
+        docs = _documents(prof, cl, pdf, separate, extra)
+
+    # 1) Versenden – die Hauptaktion, deshalb ganz oben und hervorgehoben
+    _send_section(g, s, prof, docs)
+
+    # 2) Herunterladen (z. B. für ein Bewerbungsportal)
+    st.markdown("##### Herunterladen")
+    cols = st.columns(len(docs))
+    for col, (data, name) in zip(cols, docs):
+        label = next((k for k in ("Anschreiben", "Lebenslauf", "Anlagen") if name.startswith(k)),
+                     "Bewerbungsmappe (PDF)")
+        col.download_button(label, data, file_name=name, mime="application/pdf", use_container_width=True,
+                            key=f"dl_{name}", icon=":material/download:")
+
+    # 3) Nebenaktionen klein am Ende
+    st.divider()
+    c1, c2, c3 = st.columns(3)
     if c1.button("Bearbeiten", use_container_width=True, icon=":material/edit:"):
         st.session_state.gen_step = "review"
         st.rerun()
     if c2.button("Neue Bewerbung", use_container_width=True, icon=":material/add:"):
         reset()
         st.rerun()
-
-    # Format: wie verlangt das Unternehmen die Unterlagen? (gilt für Download UND E-Mail-Anhang)
-    st.divider()
-    settings = db.get_user_settings(uid())
-    st.session_state.setdefault("gen_format", _saved_format(settings.get("pdf_format")))
-    fmt = st.segmented_control("Wie möchte das Unternehmen die Unterlagen?", FORMATS, key="gen_format") or FORMATS[0]
-    if fmt != settings.get("pdf_format"):
-        settings["pdf_format"] = fmt
-        db.save_user_settings(uid(), settings)
-    separate = fmt == FORMATS[1]
-    st.caption("Getrennt = Anschreiben und Lebenslauf als zwei Dateien (das Deckblatt entfällt) – für Portale mit "
-               "einzelnen Upload-Feldern." if separate else
-               "Deckblatt, Anschreiben und Lebenslauf in einer Datei – Standard für Bewerbungen per E-Mail.")
-    extra = _attachments_pick()
-    docs = _documents(prof, cl, pdf, separate, extra)
-
-    st.divider()
-    _send_section(g, s, prof, docs)
-
-    # Herunterladen (rot) + Status – ganz unten
-    st.divider()
-    st.subheader("Herunterladen")
-    cols = st.columns(len(docs))
-    for col, (data, name) in zip(cols, docs):
-        if name.startswith("Anschreiben"):
-            label = "Anschreiben"
-        elif name.startswith("Lebenslauf"):
-            label = "Lebenslauf"
-        elif name.startswith("Anlagen"):
-            label = "Anlagen"
-        else:
-            label = "Bewerbungsmappe (PDF)"
-        col.download_button(label, data, file_name=name, mime="application/pdf", type="primary",
-                            use_container_width=True, key=f"dl_{name}", icon=":material/download:")
-    if app.get("status") == "Erstellt":
-        if st.button("Als beworben markieren", use_container_width=True, icon=":material/task_alt:",
-                     help="Setzt nur den Status in „Meine Bewerbungen“ – gespeichert ist schon alles."):
-            db.mark_applied(uid(), app_id)
-            st.rerun()
-    elif app:
-        st.success(f"Status: **{app['status']}** (seit {app['applied_at']}) – ändern unter „Meine Bewerbungen“.",
-                   icon=":material/task_alt:")
+    if not sent and c3.button("Als beworben markieren", use_container_width=True, icon=":material/task_alt:",
+                              help="Z. B. nach dem Hochladen in ein Bewerbungsportal. Gespeichert ist schon alles."):
+        db.mark_applied(uid(), app_id)
+        st.rerun()
     _report_ai_content(g, s)
 
 
@@ -544,38 +540,46 @@ def _report_ai_content(g: dict, s: dict) -> None:
 
 def _send_section(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -> None:
     """Bewerbung versenden: Empfänger aus der Anzeige, dann direkt per SMTP oder als Gmail-Entwurf."""
-    st.subheader("Bewerbung versenden")
-    cl = s["cover_letter"]
     sent_to = st.session_state.get("gen_sent")
     if sent_to:
-        st.success(f"Gesendet an **{sent_to}** – steht in „Meine Bewerbungen“.", icon=":material/mark_email_read:")
+        st.success(f"**Gesendet an {sent_to}** – steht in „Meine Bewerbungen“ als beworben.",
+                   icon=":material/mark_email_read:")
         return
+    box = st.container(border=True)
+    with box:
+        _send_form(g, s, prof, docs)
+
+
+def _send_form(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -> None:
+    st.markdown("### :material/send: Per E-Mail bewerben")
     found = mailer.find_emails(g.get("job_text", ""))
     if found:
-        st.caption("E-Mail-Adresse aus der Anzeige übernommen" +
+        st.caption("Empfänger aus der Anzeige übernommen" +
                    (f" (weitere: {', '.join(found[1:3])})" if len(found) > 1 else "") + " – bitte kurz prüfen.")
     else:
-        st.info("In der Anzeige steht **keine E-Mail-Adresse**. Dann bewirbt man sich meist über das "
-                "Bewerbungsformular der Firma: Anzeige öffnen, „Jetzt bewerben“ wählen, PDF hochladen. "
-                "Steht irgendwo doch eine Adresse (z. B. auf der Karriereseite), trag sie hier ein.", icon=":material/info:")
+        st.info("In der Anzeige steht **keine E-Mail-Adresse** – dann meist über das Bewerbungsformular der Firma "
+                "(Anzeige öffnen → „Jetzt bewerben“ → PDF hochladen). Kennst du doch eine Adresse, trag sie ein.",
+                icon=":material/info:")
         if g.get("job_url"):
-            st.link_button("Anzeige / Bewerbungsportal öffnen", g["job_url"], use_container_width=True,
-                           icon=":material/open_in_new:")
+            st.link_button("Anzeige / Bewerbungsportal öffnen", g["job_url"], icon=":material/open_in_new:")
     st.session_state.setdefault("gen_mail_to", found[0] if found else "")
     st.session_state.setdefault("gen_mail_subject", mailer.default_subject(s))
     st.session_state.setdefault("gen_mail_body", mailer.default_body(s, prof["data"]))
-    to = st.text_input("An", key="gen_mail_to", placeholder="bewerbung@firma.de")
-    subject = st.text_input("Betreff", key="gen_mail_subject")
-    body = st.text_area("Text der E-Mail", key="gen_mail_body", height=220,
-                        help="Kurz halten – das eigentliche Anschreiben steckt im PDF.")
+    c1, c2 = st.columns([2, 3])
+    to = c1.text_input("An", key="gen_mail_to", placeholder="z. B. bewerbung@firma.de")
+    subject = c2.text_input("Betreff", key="gen_mail_subject")
+    with st.expander("E-Mail-Text ansehen / anpassen", icon=":material/edit_note:"):
+        body = st.text_area("Text der E-Mail", key="gen_mail_body", height=220, label_visibility="collapsed",
+                            help="Kurz halten – das eigentliche Anschreiben steckt im PDF.")
+    st.caption(":material/attach_file: Anhang: " + ", ".join(name for _, name in docs))
     acc = db.get_user_settings(uid()).get("mail") or {}
     ok_to = mailer.valid_email(to)
 
     if mailer.account_ready(acc):
         copy = st.checkbox("Kopie an mich", value=not mailer.PROVIDERS.get(acc.get("provider"), {}).get("saves_sent"),
                            key="gen_mail_copy", help="Gmail legt gesendete Mails ohnehin unter „Gesendet“ ab.")
-        if st.button(f"Jetzt von {acc['address']} senden", type="primary", use_container_width=True, icon=":material/send:",
-                     disabled=not ok_to):
+        if st.button(f"Jetzt senden (von {acc['address']})", type="primary", use_container_width=True,
+                     icon=":material/send:", disabled=not ok_to):
             try:
                 msg = mailer.build_message(acc, prof["data"]["personal"].get("name", ""), to, subject, body, docs,
                                            copy_to_self=copy)
@@ -591,22 +595,25 @@ def _send_section(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -
             st.session_state.gen_sent = to.strip()
             st.rerun()
     else:
+        st.markdown("**Direkt aus SmartResume senden** – mit Anhang, ein Klick. Dafür einmalig dein E-Mail-Konto "
+                    "verbinden (Gmail, Outlook, GMX, Web.de …, ca. 2 Minuten).")
+        if st.button("E-Mail-Konto verbinden", type="primary", use_container_width=True, icon=":material/link:"):
+            go("settings")
         personal = prof["data"]["personal"]
         draft = mailer.build_draft(personal.get("name", ""), personal.get("email") or st.session_state.user["email"],
                                    to, subject, body, docs)
         company = re.sub(r"[^\w-]+", "_", s["cover_letter"].get("company") or "Bewerbung").strip("_")[:40]
-        c1, c2 = st.columns(2)
-        c1.download_button("Entwurf mit Anhang", draft, file_name=f"Bewerbung_{company}.eml", mime="message/rfc822",
-                           use_container_width=True, icon=":material/attach_email:", key="gen_mail_draft")
-        c1.caption("Für Outlook, Thunderbird oder Apple Mail: Datei öffnen – Empfänger, Text und PDF sind schon "
-                   "drin, nur noch senden. (Thunderbird: „Als neu bearbeiten“.)")
-        c2.link_button("Gmail-Entwurf öffnen", mailer.gmail_compose_url(to, subject, body),
-                       use_container_width=True, disabled=not ok_to, icon=":material/drafts:")
-        c2.caption("Für Gmail im Browser: Text ist vorausgefüllt, die PDF" + (
-            "s" if len(docs) > 1 else "") + " unten herunterladen und anhängen.")
-        if st.button("Lieber mit einem Klick senden – E-Mail-Konto verbinden (2 Minuten)",
-                     icon=":material/settings:"):
-            go("settings")
+        with st.expander("Ohne Konto: als Entwurf in deinem Mailprogramm öffnen", icon=":material/drafts:"):
+            c1, c2 = st.columns(2)
+            c1.download_button("Entwurf mit Anhang (.eml)", draft, file_name=f"Bewerbung_{company}.eml",
+                               mime="message/rfc822", use_container_width=True, icon=":material/attach_email:",
+                               key="gen_mail_draft")
+            c1.caption("Outlook, Thunderbird, Apple Mail: Datei öffnen – Empfänger, Text und PDF sind drin, nur "
+                       "noch senden. (Thunderbird: „Als neu bearbeiten“.)")
+            c2.link_button("Gmail-Entwurf öffnen", mailer.gmail_compose_url(to, subject, body),
+                           use_container_width=True, disabled=not ok_to, icon=":material/drafts:")
+            c2.caption("Gmail im Browser: Text ist vorausgefüllt, die PDF" + ("s" if len(docs) > 1 else "") +
+                       " unten herunterladen und anhängen.")
 
 
 def _ats_fix(action: str, term: str, profile_word: str = "") -> None:

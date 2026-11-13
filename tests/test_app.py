@@ -285,11 +285,11 @@ def test_full_generation_flow(env):
     apps = db.list_applications(uid)
     assert len(apps) == 1 and apps[0]["company"] == "Lumora GmbH" and apps[0]["status"] == "Erstellt"
     assert "Vue.js" in db.get_application(uid, apps[0]["id"])["job_text"]
-    assert [d.label for d in at.get("download_button") if d.label != "Entwurf mit Anhang"] == ["Bewerbungsmappe (PDF)"]
+    assert [d.label for d in at.get("download_button") if not d.label.startswith("Entwurf")] == ["Bewerbungsmappe (PDF)"]
     # getrennt: Anschreiben + Lebenslauf (Wahl wird gemerkt)
     at.segmented_control(key="gen_format").set_value("Getrennt: Anschreiben + Lebenslauf")
     _run(at)
-    assert [d.label for d in at.get("download_button") if d.label != "Entwurf mit Anhang"] == ["Anschreiben", "Lebenslauf"]
+    assert [d.label for d in at.get("download_button") if not d.label.startswith("Entwurf")] == ["Anschreiben", "Lebenslauf"]
     assert db.get_user_settings(uid)["pdf_format"].startswith("Getrennt")
     # „Als beworben markieren“ setzt NUR den Status – keine zweite Bewerbung
     _btn(at, "Als beworben markieren").click()
@@ -366,7 +366,8 @@ def test_without_api_key_uses_chat_mode(env, monkeypatch):
     monkeypatch.delenv("FAKE_KEY")                      # keine KI-API eingerichtet
     _user_with_profile()
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    assert any("noch keine KI verbunden" in i.value for i in at.info)
+    assert any("Ohne API-Key" in c.value for c in at.caption)          # vorab erklärt, wie es ohne Key geht
+    assert any("KI per Kopieren" in m.value for m in at.markdown)      # Statusleiste
     _start_generation(at)
     assert at.session_state.gen_step == "manual"
     prompt = next(c.value for c in at.code)
@@ -466,7 +467,8 @@ def test_first_run_without_key_opens_setup_and_saves_key(env, monkeypatch):
     assert config.is_set("GEMINI_API_KEY")
     _btn(at, "Neue Bewerbung").click()
     _run(at)
-    assert not any("noch keine KI verbunden" in i.value for i in at.info)   # sofort einsatzbereit
+    assert not any("Ohne API-Key" in c.value for c in at.caption)       # sofort einsatzbereit
+    assert any("KI automatisch" in m.value for m in at.markdown)
 
 
 def test_setup_page_is_admin_only(env):
@@ -551,8 +553,8 @@ def test_send_application_without_mail_account_offers_gmail_draft(env):
     assert next(t for t in at.text_input if t.label == "An").value == "jobs@lumora.de"
     assert "anbei sende ich Ihnen" in next(t for t in at.text_area if t.label == "Text der E-Mail").value
     assert any("E-Mail-Konto verbinden" in b.label for b in at.button)
-    draft = next(d for d in at.get("download_button") if d.label == "Entwurf mit Anhang")
-    assert draft.proto.label == "Entwurf mit Anhang"            # .eml mit PDF – öffnet in Outlook & Co.
+    draft = next(d for d in at.get("download_button") if d.label.startswith("Entwurf mit Anhang"))
+    assert draft.proto.label == "Entwurf mit Anhang (.eml)"     # .eml mit PDF – öffnet in Outlook & Co.
 
 
 def test_send_application_via_smtp(env, monkeypatch):
@@ -567,7 +569,7 @@ def test_send_application_via_smtp(env, monkeypatch):
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
     _done_state(at)
     _run(at)
-    _btn(at, "Jetzt von anna@example.com senden").click()
+    _btn(at, "Jetzt senden (von anna@example.com)").click()
     _run(at)
     msg = FakeSMTP.sent[0][1]
     assert msg["To"] == "jobs@lumora.de" and msg["Subject"] == "Bewerbung als Frontend Developer"
