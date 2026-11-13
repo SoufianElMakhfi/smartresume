@@ -8,8 +8,8 @@ import json
 
 import streamlit as st
 
-from .. import auth, bridge, cv_import, db, llm
-from ..profile import empty_profile, from_legacy_master, is_profile_usable, normalize_profile
+from .. import auth, bridge, cv_import, cv_parse, db, llm
+from ..profile import empty_profile, from_legacy_master, is_profile_usable, join_name, normalize_profile
 from ..render import prepare_photo, prepare_signature
 from .common import (branding, chat_bridge, fallback_chain, fmt_tokens, go, model_picker, notify_switch,
                      record_usage, uid)
@@ -103,7 +103,7 @@ def _add_button(section: str, label: str) -> None:
 def _checklist(d: dict, photo: bytes | None) -> list[tuple[str, bool, str]]:
     p = d["personal"]
     return [
-        ("Vor- und Nachname", len(p["name"].split()) >= 2, T_PERSONAL),
+        ("Vor- und Nachname", bool(p["last_name"]), T_PERSONAL),
         ("E-Mail und Telefon", bool(p["email"] and p["phone"]), T_PERSONAL),
         ("Adresse", bool(p["zip_city"]), T_PERSONAL),
         ("Bewerbungsfoto", bool(photo), T_PERSONAL),
@@ -202,8 +202,13 @@ def _personal(d: dict, new: dict, stored: dict) -> None:
     with c_photo:
         _photo(stored)
     with c_form:
-        p["name"] = st.text_input("Vor- und Nachname *", d["personal"]["name"], key=_k("name"),
-                                  placeholder="Max Mustermann")
+        c1, c2 = st.columns(2)
+        p["first_name"] = c1.text_input("Vorname *", d["personal"]["first_name"], key=_k("first_name"),
+                                        placeholder="Max")
+        p["last_name"] = c2.text_input("Nachname *", d["personal"]["last_name"], key=_k("last_name"),
+                                       placeholder="Mustermann", help="Mit allen Namensteilen, z. B. „El Makhfi“ "
+                                       "oder „von der Heide“. Nur ein Name? Dann nur hier eintragen.")
+        p["name"] = join_name(p["first_name"], p["last_name"])
         p["headline"] = st.text_input("Berufsbezeichnung", d["personal"]["headline"], key=_k("headline"),
                                       placeholder="z. B. Wirtschaftsinformatik-Student")
         c1, c2 = st.columns(2)
@@ -466,7 +471,7 @@ def _wishes(d: dict, new: dict, stored: dict) -> None:
 MODES = ["Ergänzen – Vorhandenes bleibt", "Ersetzen – Profil neu aus dem Lebenslauf"]
 
 
-def _apply_cv(incoming: dict, mode: str, source: str) -> None:
+def _apply_cv(incoming: dict, mode: str, source: str, note: str = "") -> None:
     """Übernimmt den ausgelesenen Lebenslauf ins Profil und springt zu den persönlichen Daten."""
     base = st.session_state.draft
     merged = incoming if mode.startswith("Ersetzen") else cv_import.merge_profiles(base, incoming)
@@ -481,7 +486,7 @@ def _apply_cv(incoming: dict, mode: str, source: str) -> None:
     st.session_state.profile_flash = (
         f"**Lebenslauf übernommen** ({source}): {len(incoming['experience'])} Stationen, "
         f"{len(incoming['education'])} Ausbildungen, {len(incoming['skills'])} Skill-Kategorien. "
-        f"Bitte die Bereiche kurz durchsehen und Fehlendes ergänzen.{photo}")
+        f"Bitte die Bereiche kurz durchsehen und Fehlendes ergänzen.{photo}{note}")
     st.session_state.profile_goto = T_PERSONAL
     st.rerun()
 
@@ -499,10 +504,15 @@ def _cv_import(stored: dict) -> None:
     has_data = bool(st.session_state.draft["experience"] or st.session_state.draft["education"])
     mode = st.radio("Dein Profil enthält schon Daten. Was soll mit ihnen passieren?", MODES, key="cv_mode") \
         if has_data else MODES[1]
-    picked = model_picker("cv_model", "Modell zum Auslesen",
-                          "Schnelle Modelle (Flash-Lite, Groq) reichen für das Auslesen völlig.")
-    if picked is None:
-        _no_ai_hint()
+    use_ai = st.toggle("Mit KI auslesen", key="cv_use_ai",
+                       help="Ohne KI liest SmartResume den Lebenslauf sofort, kostenlos und nur auf deinem Rechner "
+                            "aus. Die KI ist genauer bei ungewöhnlichen Layouts, z. B. mehrspaltigen Designs.")
+    picked = None
+    if use_ai:
+        picked = model_picker("cv_model", "Modell zum Auslesen",
+                              "Schnelle Modelle (Flash-Lite, Groq) reichen für das Auslesen völlig.")
+        if picked is None:
+            _no_ai_hint()
 
     run_upload = st.button("Lebenslauf auslesen und Profil füllen", disabled=f is None, type="primary",
                            use_container_width=True, icon=":material/document_scanner:")
@@ -520,6 +530,12 @@ def _cv_import(stored: dict) -> None:
                 db.save_profile(uid(), cv_text=text, cv_filename=f.name)
             else:
                 text = stored["cv_text"]
+            if not use_ai:
+                incoming, skipped = cv_parse.parse_cv(text, f.name if run_upload else stored["cv_filename"])
+                extra = f" Nicht übernommen: {', '.join(skipped)}." if skipped else ""
+                _apply_cv(incoming, mode, "ohne KI, direkt auf deinem Rechner",
+                          f"{extra} Etwas falsch zugeordnet? Unter *Lebenslauf importieren* „Mit KI auslesen“ "
+                          "einschalten und erneut auslesen.")
             if picked is None:
                 st.session_state.cv_manual = {"text": text, "mode": mode, "reason": ""}
                 st.rerun()
@@ -543,9 +559,10 @@ def _cv_import(stored: dict) -> None:
 
 def _no_ai_hint() -> None:
     """Ohne verbundene KI: vorab erklären, wie das Auslesen trotzdem funktioniert."""
-    st.info("**Es ist noch keine KI verbunden.** Das Auslesen funktioniert trotzdem – über dein eigenes, kostenloses "
+    st.info("**Es ist noch keine KI verbunden.** Mit KI auslesen geht trotzdem – über dein eigenes, kostenloses "
             "Gemini- oder ChatGPT-Konto: SmartResume erstellt einen fertigen Auftrag, du fügst ihn dort ein und "
-            "kopierst die Antwort zurück. Das dauert etwa eine Minute.", icon=":material/info:")
+            "kopierst die Antwort zurück. Das dauert etwa eine Minute. Oder den Schalter einfach ausgeschaltet "
+            "lassen – dann liest SmartResume ohne KI aus.", icon=":material/info:")
     if auth.can_configure_ai(st.session_state.user) and st.button(
             "Stattdessen KI verbinden – dann läuft das Auslesen automatisch", icon=":material/key:"):
         go("setup")

@@ -49,8 +49,9 @@ Lebenslaufs sendet SmartResume Daten direkt von deinem PC an den KI-Anbieter, de
 - **Bewerbung erstellen / Passung bewerten:** Name, berufliche Überschrift, Kurzprofil, Werdegang,
   Ausbildung, Kenntnisse, Sprachen, Schreibstil, deine Zusatzangaben und der Text der Stellenanzeige.
   **Nicht** gesendet werden E-Mail-Adresse, Telefonnummer, Anschrift, Foto und Unterschrift.
-- **Lebenslauf auslesen:** der vollständige Text des hochgeladenen Lebenslaufs. Er kann Kontaktdaten
-  enthalten.
+- **Lebenslauf mit KI auslesen** (nur wenn du den Schalter „Mit KI auslesen“ einschaltest): der
+  vollständige Text des hochgeladenen Lebenslaufs. Er kann Kontaktdaten enthalten. Standardmäßig liest
+  SmartResume den Lebenslauf ohne KI direkt auf deinem PC aus – dabei wird nichts gesendet.
 
 Mögliche Anbieter, je nach deiner Wahl: Google (Gemini), Groq, Mistral AI, OpenRouter, Anthropic (Claude)
 oder ein lokales Modell (z. B. Ollama), bei dem nichts den PC verlässt. Die Verarbeitung richtet sich nach den

@@ -86,7 +86,8 @@ REGELN:
 - Fehlende Angaben: leerer String bzw. leere Liste.
 Antworte nur mit JSON in exakt diesem Schema (Listen enthalten beliebig viele Einträge dieser Form):
 """ + json.dumps({
-    "personal": {"name": "", "headline": "Berufsbezeichnung laut CV", "email": "", "phone": "",
+    "personal": {"first_name": "Vorname(n)", "last_name": "Nachname inkl. Zusätzen wie von/van/El",
+                 "headline": "Berufsbezeichnung laut CV", "email": "", "phone": "",
                  "street": "", "zip_city": "PLZ Ort", "links": [{"label": "LinkedIn", "url": ""}]},
     "summary": "Profiltext laut CV oder leer",
     "experience": [{"company": "", "role": "Jobtitel/Position", "start": "MM/JJJJ", "end": "MM/JJJJ oder Heute",
@@ -128,7 +129,12 @@ def merge_profiles(base: dict, incoming: dict) -> dict:
     """Ergänzt `base` um Daten aus `incoming`, ohne Vorhandenes zu überschreiben."""
     base, incoming = normalize_profile(base), normalize_profile(incoming)
     out = json.loads(json.dumps(base))
+    name_keys = ("first_name", "last_name", "name")
+    if not (out["personal"]["first_name"] or out["personal"]["last_name"]):   # Name nur als Ganzes übernehmen
+        out["personal"].update({k: incoming["personal"][k] for k in name_keys})
     for k, v in incoming["personal"].items():
+        if k in name_keys:
+            continue
         if k == "links":
             have = {l["url"].rstrip("/").lower() for l in out["personal"]["links"]}
             out["personal"]["links"] += [l for l in v if l["url"].rstrip("/").lower() not in have]

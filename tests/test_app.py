@@ -190,16 +190,18 @@ def test_profile_page_edit_and_save(env):
                                                              "Kenntnisse", "Wünsche & Stil"]
     assert any("vollständig" in str(getattr(x, "value", "")) or "vollständig" in str(getattr(x, "text", ""))
                for x in at.get("progress"))
-    name_input = next(t for t in at.text_input if t.label == "Vor- und Nachname *")
-    assert name_input.value == "Max Mustermann"
-    name_input.input("Max M.")
+    assert next(t for t in at.text_input if t.label == "Vorname *").value == "Max"
+    name_input = next(t for t in at.text_input if t.label == "Nachname *")
+    assert name_input.value == "Mustermann"
+    name_input.input("El Mustermann")
     _run(at)
-    assert db.get_profile(uid)["data"]["personal"]["name"] == "Max M."   # sofort gespeichert, ohne Knopf
+    pers = db.get_profile(uid)["data"]["personal"]                    # sofort gespeichert, ohne Knopf
+    assert (pers["first_name"], pers["last_name"], pers["name"]) == ("Max", "El Mustermann", "Max El Mustermann")
     # bleibt nach neuem Login (neue Sitzung) erhalten
     at2 = _login(_run(AppTest.from_file(APP, default_timeout=60)))
     _btn(at2, "Mein Profil").click()
     _run(at2)
-    assert next(t for t in at2.text_input if t.label == "Vor- und Nachname *").value == "Max M."
+    assert next(t for t in at2.text_input if t.label == "Nachname *").value == "El Mustermann"
     # Station hinzufügen und wieder entfernen
     n = len(db.get_profile(uid)["data"]["experience"])
     _btn(at, "Station hinzufügen").click()
@@ -381,6 +383,8 @@ def test_cv_import_via_chat_mode(env, monkeypatch):
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
     _btn(at, "Mein Profil").click()
     _run(at)
+    at.toggle(key="cv_use_ai").set_value(True)
+    _run(at)
     assert any("noch keine KI verbunden" in i.value for i in at.info)   # vorab erklärt, wie es ohne KI geht
     _btn(at, "Gespeicherten Lebenslauf erneut auslesen (cv.txt)").click()
     _run(at)
@@ -393,7 +397,27 @@ def test_cv_import_via_chat_mode(env, monkeypatch):
     assert prof["personal"]["name"] == "Anna Beispiel" and prof["experience"][0]["company"] == "Muster AG"
     assert at.session_state.profile_tab.endswith("Persönlich")          # springt direkt zu den übernommenen Daten
     assert any("Lebenslauf übernommen" in x.value for x in at.success)
-    assert next(t for t in at.text_input if t.label == "Vor- und Nachname *").value == "Anna Beispiel"
+    assert next(t for t in at.text_input if t.label == "Nachname *").value == "Beispiel"
+
+
+def test_cv_import_without_ai_is_default(env, monkeypatch):
+    monkeypatch.delenv("FAKE_KEY")
+    uid = db.create_user("anna@example.com")
+    cv = ("Anna Ben Salah\nanna@example.com · 0151 2345678 · Lindenweg 3, 50667 Köln\nBERUFSERFAHRUNG\n"
+          "Verkäuferin\n03/2020 – heute\nMuster AG, Köln\n• Beratung von Kundinnen und Kunden\n"
+          "SPRACHEN\nDeutsch (Muttersprache), Englisch (B2)\n")
+    db.save_profile(uid, cv_text=cv, cv_filename="cv.txt")
+    at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
+    _btn(at, "Mein Profil").click()
+    _run(at)
+    assert not any("noch keine KI verbunden" in i.value for i in at.info)   # kein Hinweis auf KI nötig
+    _btn(at, "Gespeicherten Lebenslauf erneut auslesen (cv.txt)").click()
+    _run(at)
+    pers = db.get_profile(uid)["data"]["personal"]
+    assert (pers["first_name"], pers["last_name"]) == ("Anna", "Ben Salah")
+    assert db.get_profile(uid)["data"]["experience"][0]["company"] == "Muster AG"
+    assert any("ohne KI" in x.value for x in at.success)
+    assert next(t for t in at.text_input if t.label == "Nachname *").value == "Ben Salah"
 
 
 # ---------------------------------------------------------------------------
@@ -563,7 +587,7 @@ def _progress_text(at):
 def test_profile_progress_updates_live_and_jumps(env):
     uid = _user_with_profile()
     prof = db.get_profile(uid)["data"]
-    prof["personal"]["name"] = "Max"           # nur Vorname → Punkt offen
+    prof["personal"].update(first_name="Max", last_name="")   # nur Vorname → Punkt offen
     db.save_profile(uid, data=prof)
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
     _btn(at, "Mein Profil").click()
@@ -574,7 +598,7 @@ def test_profile_progress_updates_live_and_jumps(env):
     _run(at)
     assert at.session_state.profile_tab.endswith("Persönlich")
     assert any("Hier ergänzen" in i.value for i in at.info)
-    next(t for t in at.text_input if t.label == "Vor- und Nachname *").input("Max Mustermann")
+    next(t for t in at.text_input if t.label == "Nachname *").input("Mustermann")
     _run(at)
     after = _progress_text(at)
     assert after > before                     # im selben Durchlauf aktualisiert, nicht erst beim nächsten

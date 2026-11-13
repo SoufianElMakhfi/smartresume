@@ -20,7 +20,7 @@ maßgeschneiderte Bewerbung als PDF (Typst). Details: `README.md`.
 - `launcher.py` – Start: eigenes Fenster (pywebview/WebView2), Server als Unterprozess (`--server`) mit Start-Token
   (`SMARTRESUME_LOCAL_TOKEN`); auch für `SmartResume.exe`/Store-App (`build_exe.py`, `build_msix.py`)
 - `app.py` – Login (Server: E-Mail-Code, erste E-Mail = Admin; lokal: nur E-Mail + Start-Token), Navigation
-- `smartresume/` – Logik (`auth`, `bridge`, `config`, `paths`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`, `cv_import`, `scrape`, `render`, `branding`, `secret` (DPAPI für Keys/Passwörter), `backup` (ZIP-Sicherung))
+- `smartresume/` – Logik (`auth`, `bridge`, `config`, `paths`, `profile`, `db`, `llm`, `prompts`, `generate`, `quality`, `cv_import` (KI-Import, Zusammenführen), `cv_parse` (Import ohne KI, Standard), `scrape`, `render`, `branding`, `secret` (DPAPI für Keys/Passwörter), `backup` (ZIP-Sicherung))
 - `smartresume/ui/` – Seiten (Bewerbung, Jobs, Profil, Meine Bewerbungen, Einstellungen inkl. Daten & Sicherung, KI einrichten, Hilfe & Info, Verwaltung – nur Server)
 - Lokal (Fenster-App) keine Admin-/Server-Begriffe; `auth.local_mode()` / `auth.can_configure_ai()`
 - `PRIVACY.md` – Datenschutzerklärung (bei neuen Datenflüssen anpassen!); `packaging/STORE_LISTING.md` – Store-Texte

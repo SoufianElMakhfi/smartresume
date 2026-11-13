@@ -25,7 +25,9 @@ EMPLOYMENT_TYPES = [
 def empty_profile() -> dict:
     return {
         "personal": {
-            "name": "",
+            "first_name": "",
+            "last_name": "",   # auch mehrteilig: „El Makhfi“, „von der Heide“
+            "name": "",        # immer „Vorname Nachname“ – wird in normalize_profile gebildet
             "headline": "",
             "email": "",
             "phone": "",
@@ -112,8 +114,13 @@ def normalize_profile(data: dict | None) -> dict:
     p = empty_profile()
 
     pers = data.get("personal") or {}
-    for k in ("name", "headline", "email", "phone", "street", "zip_city"):
+    for k in ("headline", "email", "phone", "street", "zip_city"):
         p["personal"][k] = _s(pers.get(k))
+    first, last = _s(pers.get("first_name")), _s(pers.get("last_name"))
+    if not (first or last):          # ältere Profile/KI-Antworten kennen nur „name“
+        first, last = split_name(_s(pers.get("name")))
+    p["personal"]["first_name"], p["personal"]["last_name"] = first, last
+    p["personal"]["name"] = join_name(first, last)
     links = []
     for link in pers.get("links") or []:
         if isinstance(link, dict) and _s(link.get("url")):
@@ -145,6 +152,31 @@ def normalize_profile(data: dict | None) -> dict:
     if p["design"]["accent_color"] and not _HEX_RE.match(p["design"]["accent_color"]):
         p["design"]["accent_color"] = ""
     return p
+
+
+# Namenszusätze, die zum Nachnamen gehören („Yasser El Makhfi“ → Nachname „El Makhfi“)
+NAME_PARTICLES = {"von", "van", "vom", "zu", "zum", "zur", "der", "den", "de", "del", "della", "di", "da", "das",
+                  "do", "dos", "du", "la", "le", "el", "al", "ben", "bin", "ibn", "abu", "ter", "ten", "op", "mc"}
+
+
+def split_name(name: str) -> tuple[str, str]:
+    """„Vorname(n) Nachname“ bzw. „Nachname, Vorname“ → (Vorname, Nachname). Nur eine Schätzung für
+    alte Profile und den Import – im Profil stehen beide Felder getrennt und sind korrigierbar."""
+    name = re.sub(r"\s+", " ", name or "").strip()
+    if "," in name:
+        last, first = (x.strip() for x in name.split(",", 1))
+        return first, last
+    words = name.split(" ")
+    if len(words) < 2:
+        return name, ""
+    i = len(words) - 1
+    while i > 1 and words[i - 1].lower().strip(".'") in NAME_PARTICLES:
+        i -= 1
+    return " ".join(words[:i]), " ".join(words[i:])
+
+
+def join_name(first: str, last: str) -> str:
+    return " ".join(x for x in (first.strip(), last.strip()) if x)
 
 
 def dedupe_skills(skills: list[dict]) -> list[dict]:
@@ -222,10 +254,13 @@ def is_profile_usable(profile: dict) -> list[str]:
     """Gibt fehlende Pflichtangaben zurück (leere Liste = ok)."""
     missing = []
     pers = profile.get("personal", {})
-    if not pers.get("name"):
+    first, last = pers.get("first_name", ""), pers.get("last_name", "")
+    if not (first or last):
+        first, last = split_name(pers.get("name", ""))
+    if not (first or last):
         missing.append("Name")
-    elif len(pers["name"].split()) < 2:
-        missing.append("Nachname (unter *Persönliches* den vollen Namen eintragen)")
+    elif not last:
+        missing.append("Nachname (unter *Persönliches* eintragen)")
     if not pers.get("email"):
         missing.append("E-Mail")
     if not profile.get("experience") and not profile.get("education"):
