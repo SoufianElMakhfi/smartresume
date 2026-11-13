@@ -83,6 +83,7 @@ jobs:
           name: SmartResume-msix
           path: dist
       - name: Store-Zugang vorhanden?
+        id: zugang
         shell: pwsh
         env:
           T: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
@@ -90,10 +91,14 @@ jobs:
           C: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
           K: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
         run: |
-          if (-not ($env:T -and $env:S -and $env:C -and $env:K)) {
-            Write-Error "Store-Zugang fehlt: Secrets PARTNER_CENTER_* im Repository anlegen."; exit 1 }
+          $ok = [bool]($env:T -and $env:S -and $env:C -and $env:K)
+          "ok=$($ok.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          if (-not $ok) {
+            Write-Output "::warning::Store-Zugang fehlt (Secrets PARTNER_CENTER_*) – .msix aus den Artifacts manuell in Partner Center hochladen." }
       - uses: microsoft/microsoft-store-apppublisher@v1.4
+        if: steps.zugang.outputs.ok == 'true'
       - name: Anmelden
+        if: steps.zugang.outputs.ok == 'true'
         shell: pwsh
         run: >
           msstore reconfigure
@@ -102,6 +107,7 @@ jobs:
           --clientId "${{ secrets.PARTNER_CENTER_CLIENT_ID }}"
           --clientSecret "${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}"
       - name: Hochladen und einreichen
+        if: steps.zugang.outputs.ok == 'true'
         shell: pwsh
         run: |
           $msix = (Get-ChildItem dist\*.msix | Select-Object -First 1).FullName
