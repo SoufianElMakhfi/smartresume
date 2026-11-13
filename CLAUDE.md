@@ -10,7 +10,8 @@ git push
 Kein extra Nachfragen – einfach machen.
 
 ## Testen
-Vor jedem Commit: `python -m pytest` (Unit-, Render- und UI-Tests mit Fake-KI). Änderungen an Prompts
+Unit-, Render- und UI-Tests mit Fake-KI (`python -m pytest`, komplett ca. 30 s). Nur Text/Doku → keine Tests;
+kleine Code-Änderung → passende Datei (z. B. `tests/test_jobsearch.py`); größere Änderung oder vor einem Build → alle. Änderungen an Prompts
 zusätzlich live gegen ein echtes Modell prüfen (Keys in `.env`).
 
 ## Projekt
