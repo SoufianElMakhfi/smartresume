@@ -205,3 +205,18 @@ def test_search_filters_by_work_mode(monkeypatch):
 def test_germany_wide_radius_drops_location():
     p = js.build_params("Software", "Köln", js.GERMANY, "Vollzeit", 30)
     assert "wo" not in p and "umkreis" not in p
+
+
+def test_employment_type_from_query_wins():
+    assert js.type_from_query("Werkstudent Student der Wirtschaftsinformatik") == "Werkstudent"
+    assert js.type_from_query("Student der Wirtschaftsinformatik") == "Werkstudent"
+    assert js.type_from_query("Praktikum Marketing für Studierende") == "Praktikum"
+    assert js.type_from_query("Ausbildung Fachinformatiker") == "Ausbildung"
+    assert js.type_from_query("Controlling") is None
+
+
+def test_student_headline_defaults_to_werkstudent():
+    from smartresume.profile import default_employment_type, normalize_profile
+    p = normalize_profile({"personal": {"headline": "Student der Wirtschaftsinformatik"}})
+    assert default_employment_type(p) == "Werkstudent"
+    assert default_employment_type(normalize_profile({})) == "Vollzeit"

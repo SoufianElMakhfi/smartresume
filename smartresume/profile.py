@@ -274,7 +274,9 @@ def default_employment_type(profile: dict, prefs: dict | None = None) -> str:
     last = (prefs or {}).get("employment_type")
     if last in EMPLOYMENT_TYPES:
         return last
-    return "Werkstudent" if (profile.get("preferences") or {}).get("student_status") else "Vollzeit"
+    student = (profile.get("preferences") or {}).get("student_status") or \
+        re.search(r"\bstudent|\bstudierend", (profile.get("personal") or {}).get("headline", ""), re.I)
+    return "Werkstudent" if student else "Vollzeit"
 
 
 def is_profile_usable(profile: dict) -> list[str]:

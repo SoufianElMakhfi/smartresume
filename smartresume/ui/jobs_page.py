@@ -168,12 +168,13 @@ def render() -> None:
         modes = jobsearch.WORK_MODES
         mode = saved.get("work_mode", jobsearch.ANY)
         mode = c4.selectbox("Arbeitsort", modes, index=modes.index(mode) if mode in modes else 0,
-                            format_func=lambda m: {jobsearch.ANY: "Egal – vor Ort, hybrid oder remote",
-                                                   jobsearch.HOMEOFFICE: "Homeoffice möglich (hybrid oder remote)",
-                                                   jobsearch.REMOTE: "Nur Remote (100 % Homeoffice)"}[m],
-                            help="„Homeoffice möglich“: nur Stellen, in deren Anzeige Homeoffice/mobiles Arbeiten "
-                                 "steht – praktisch bei großem Umkreis. „Nur Remote“: ganz Deutschland, Ort und "
-                                 "Umkreis spielen keine Rolle.")
+                            format_func=lambda m: {
+                                jobsearch.ANY: "Alle Stellen (im Büro, hybrid oder von zu Hause)",
+                                jobsearch.HOMEOFFICE: "Mit Homeoffice (teilweise oder ganz von zu Hause)",
+                                jobsearch.REMOTE: "Nur Remote (komplett von zu Hause, ganz Deutschland)"}[m],
+                            help="Homeoffice = (teilweise) von zu Hause arbeiten, oft 1–3 Tage pro Woche (hybrid). "
+                                 "Remote = komplett von zu Hause bzw. ortsunabhängig, nie oder selten im Büro – "
+                                 "deshalb sucht „Nur Remote“ in ganz Deutschland, Ort und Umkreis spielen keine Rolle.")
         c5, c6 = st.columns(2)
         radius = saved.get("radius", 25)
         radius = c5.selectbox("Umkreis", jobsearch.RADII, index=jobsearch.RADII.index(radius)
@@ -187,6 +188,13 @@ def render() -> None:
         submitted = st.form_submit_button("Suchen", type="primary", use_container_width=True, icon=":material/search:")
 
     if submitted:
+        named = jobsearch.type_from_query(what)       # „Werkstudent …“ im Suchbegriff schlägt die Auswahl
+        if named and named != etype:
+            st.session_state.jobs_type_note = f"„{named}“ steht in deinem Suchbegriff – gesucht wird deshalb nach " \
+                                              f"{named}-Stellen (statt {etype})."
+            etype = named
+        else:
+            st.session_state.pop("jobs_type_note", None)
         settings["job_search"] = {"what": what, "where": where, "employment_type": etype, "radius": radius, "age": age,
                                   "work_mode": mode}
         db.save_user_settings(uid(), settings)
@@ -200,6 +208,8 @@ def render() -> None:
             st.error(str(e))
             return
 
+    if note := st.session_state.get("jobs_type_note"):
+        st.info(note, icon=":material/auto_fix_high:")
     jobs = st.session_state.get("jobs")
     if jobs is None:
         st.info("Ein allgemeiner Begriff reicht, z. B. „Software“, „Marketing“ oder „Controlling“. Verwandte "

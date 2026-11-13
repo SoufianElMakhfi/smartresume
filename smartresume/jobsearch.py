@@ -68,6 +68,27 @@ _FILTERS = {
     "Freelance": {"angebotsart": 2},
 }
 
+# Beschäftigungsart, die im Suchbegriff steht („Werkstudent Wirtschaftsinformatik“) – hat Vorrang vor der Auswahl,
+# sonst sucht man mit „Vollzeit“ und bekommt Vollzeitstellen. Reihenfolge = Vorrang.
+_TYPE_WORDS = [
+    ("Werkstudent", r"\bwerkstud\w*"),
+    ("Praktikum", r"\bprakti\w*|\bpraxissemester\b|\binternship\b"),
+    ("Ausbildung", r"\bausbildung\w*|\bazubi\w*"),
+    ("Minijob", r"\bminijob\w*|\bgeringfügig\w*"),
+    ("Teilzeit", r"\bteilzeit\b"),
+    ("Vollzeit", r"\bvollzeit\b"),
+    ("Freelance", r"\bfreelanc\w*|\bfreiberuf\w*"),
+    ("Werkstudent", r"\bstudent\w*|\bstudierend\w*|\bstudentisch\w*"),
+]
+
+
+def type_from_query(what: str) -> str | None:
+    """Beschäftigungsart aus dem Suchbegriff – oder None, wenn keine genannt ist."""
+    for etype, rx in _TYPE_WORDS:
+        if re.search(rx, what or "", re.I):
+            return etype
+    return None
+
 # ---------------------------------------------------------------------------
 # Fachgebiete. Die Jobbörse sucht wortgenau und verknüpft Wörter mit UND: „Software“ findet weder
 # „Softwareentwicklung“ noch „Informatiker“ oder „Developer“. Erkennt die App im Suchbegriff ein Fachgebiet
