@@ -294,6 +294,13 @@ def _main() -> None:
     st.session_state.setdefault("page", "generate")
     if st.session_state.page not in pages:
         st.session_state.page = "generate"
+    # Profil zuerst: Ohne vollständiges Profil (Name, E-Mail, Telefon, Werdegang/Ausbildung) gibt es nichts zu
+    # bewerben – Bewerbung, Jobsuche und Bewerbungsliste bleiben bis dahin gesperrt.
+    from smartresume.profile import is_profile_usable
+    missing = is_profile_usable(db.get_profile(user["id"])["data"])
+    locked = {"generate", "jobs", "tracking"} if missing else set()
+    if st.session_state.page in locked:
+        st.session_state.page = "profile"
 
     with st.sidebar:
         _logo()
@@ -308,8 +315,13 @@ def _main() -> None:
             st.caption(":orange[:material/content_paste:] KI per Kopieren & Einfügen (kein API-Key)"
                        + (" – unter **KI einrichten** einen kostenlosen Key eintragen, dann geht alles automatisch."
                           if auth.can_configure_ai(user) else ""))
+        if missing:
+            st.warning("**Zuerst dein Profil einrichten** – danach kannst du Bewerbungen erstellen und Jobs "
+                       "suchen. Fehlt noch: " + ", ".join(missing) + ".", icon=":material/lock:")
         for key, (label, icon) in pages.items():
-            if st.button(label, key=f"nav_{key}", use_container_width=True, icon=icon,
+            if st.button(label, key=f"nav_{key}", use_container_width=True,
+                         icon=":material/lock:" if key in locked else icon, disabled=key in locked,
+                         help="Erst nach dem Einrichten des Profils" if key in locked else None,
                          type="primary" if st.session_state.page == key else "secondary"):
                 st.session_state.page = key
                 st.rerun()
@@ -326,6 +338,10 @@ def _main() -> None:
      "settings": settings_page.render, "setup": setup_page.render,
      "admin": admin_page.render, "info": info_page.render}[st.session_state.page]()
     _write_cookie(st.session_state.get("session_token", ""))  # angemeldet bleiben (30 Tage)
+    # Profil gerade vollständig geworden → Navigation sofort freischalten (nicht erst beim nächsten Klick)
+    if missing and not is_profile_usable(db.get_profile(user["id"])["data"]):
+        st.toast("Profil vollständig – jetzt kannst du Bewerbungen erstellen.", icon=":material/lock_open:")
+        st.rerun()
 
 
 _restore_session()

@@ -119,7 +119,7 @@ def test_login_wrong_and_right_code(env):
     assert not _logged_in(at)
     _enter_code(at, SENT["anna@example.com"])
     assert at.session_state.user["email"] == "anna@example.com"
-    assert at.session_state.page == "generate"
+    assert at.session_state.page == "profile"              # ohne Profil: zuerst einrichten
 
 
 def test_new_email_creates_account(env):
@@ -175,10 +175,20 @@ def _user_with_profile():
     return uid
 
 
-def test_incomplete_profile_blocks_generation(env):
-    db.create_user("anna@example.com")
+def test_incomplete_profile_locks_everything_but_profile(env):
+    uid = db.create_user("anna@example.com")
     at = _login(_run(AppTest.from_file(APP, default_timeout=60)))
-    assert any("unvollständig" in w.value for w in at.warning)
+    assert at.session_state.page == "profile"
+    assert any("Zuerst dein Profil einrichten" in w.value for w in at.sidebar.warning)
+    nav = {b.key: b for b in at.sidebar.button}
+    assert all(nav[k].disabled for k in ("nav_generate", "nav_jobs", "nav_tracking"))
+    assert not nav["nav_profile"].disabled and not nav["nav_info"].disabled
+    # Profil vervollständigt → sofort frei
+    from smartresume.profile import from_legacy_master
+    db.save_profile(uid, data=from_legacy_master(json.loads(SAMPLE.read_text("utf-8"))))
+    _run(at)
+    nav = {b.key: b for b in at.sidebar.button}
+    assert not nav["nav_generate"].disabled
 
 
 def test_profile_page_edit_and_save(env):
@@ -415,7 +425,7 @@ def test_cv_import_via_chat_mode(env, monkeypatch):
     pasted = json.dumps(answer, ensure_ascii=False)
     next(t for t in at.text_area if t.label == "Antwort aus dem Chat").input(pasted)
     _run(at)
-    _btn(at, "Neue Bewerbung").click()
+    _btn(at, "Hilfe & Info").click()
     _run(at)
     _btn(at, "Mein Profil").click()
     _run(at)
@@ -465,10 +475,7 @@ def test_first_run_without_key_opens_setup_and_saves_key(env, monkeypatch):
     env_text = (env["tmp"] / ".env").read_text(encoding="utf-8")
     assert "GEMINI_API_KEY=" in env_text and "AIza-test-123" not in env_text   # verschlüsselt gespeichert
     assert config.is_set("GEMINI_API_KEY")
-    _btn(at, "Neue Bewerbung").click()
-    _run(at)
-    assert not any("Ohne API-Key" in c.value for c in at.caption)       # sofort einsatzbereit
-    assert any("KI automatisch" in m.value for m in at.markdown)
+    assert any("KI automatisch" in c.value for c in at.sidebar.caption)   # sofort einsatzbereit
 
 
 def test_setup_page_is_admin_only(env):

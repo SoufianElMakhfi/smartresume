@@ -34,15 +34,22 @@ def _provider(p: dict) -> str | None:
         if config.set_externally(env):
             st.caption("Dieser Key ist auf dem Server fest hinterlegt und kann hier nicht geändert werden.")
             return None
-        st.text_input("API-Key", type="password", key=f"setup_{env}", on_change=_save_key, args=(env,),
-                      placeholder="Key hier einfügen und Enter drücken" if not config.is_set(env)
+        c1, c2 = st.columns([3, 1], vertical_alignment="bottom")
+        c1.text_input("API-Key", type="password", key=f"setup_{env}", on_change=_save_key, args=(env,),
+                      placeholder="Key hier einfügen – wird sofort geprüft und gespeichert" if not config.is_set(env)
                       else "gespeichert – zum Ändern neuen Key einfügen", label_visibility="collapsed")
+        c2.button("Prüfen & speichern", key=f"save_{env}", type="primary", use_container_width=True,
+                  on_click=_save_key, args=(env,), icon=":material/check:")
+        if config.is_set(env) and st.button("Gespeicherten Key testen", key=f"test_{env}", type="tertiary",
+                                            icon=":material/network_check:"):
+            ok, msg = _test(env, llm.resolve_key({"key_env": env}))
+            st.session_state[f"setup_msg_{env}"] = (ok, msg if ok else f"Test fehlgeschlagen: {msg}")
         ok, msg = st.session_state.get(f"setup_msg_{env}") or (None, "")
         if ok is True:
             st.success(msg, icon=":material/check_circle:")
         elif ok is False:
             st.error(msg, icon=":material/error:")
-            if st.button("Trotzdem speichern", key=f"force_{env}",
+            if st.session_state.get(f"setup_pending_{env}") and st.button("Trotzdem speichern", key=f"force_{env}",
                          help="Z. B. wenn nur das Tageskontingent gerade aufgebraucht ist."):
                 config.save_values({env: st.session_state.pop(f"setup_pending_{env}", "")})
                 st.session_state[f"setup_msg_{env}"] = (True, "Gespeichert.")
@@ -65,8 +72,32 @@ def _save_key(env: str) -> None:
         st.session_state[f"setup_msg_{env}"] = (False, f"Key nicht gespeichert: {msg}")
 
 
+# Einfügen genügt: Nach Strg+V in ein Key-Feld verlässt das Skript das Feld kurz – dann übernimmt Streamlit den
+# Wert sofort (sonst erst bei Enter oder Klick woanders), und der Key wird geprüft und gespeichert.
+_PASTE_COMMITS = """<script>
+(function () {
+  var doc = document;
+  try { if (window.parent && window.parent.document) doc = window.parent.document; } catch (e) {}
+  if (doc.__srPasteCommit) return;
+  doc.__srPasteCommit = true;
+  doc.addEventListener('paste', function (e) {
+    var t = e.target;
+    if (t && t.tagName === 'INPUT' && t.type === 'password') setTimeout(function () { t.blur(); }, 80);
+  }, true);
+})();
+</script>"""
+
+
+def _paste_commits() -> None:
+    try:
+        st.html(_PASTE_COMMITS, unsafe_allow_javascript=True)
+    except TypeError:          # ältere Streamlit-Versionen: Enter bzw. Knopf genügen
+        pass
+
+
 def render() -> None:
     st.title("KI einrichten")
+    _paste_commits()
     st.write("Mit einem **kostenlosen** API-Key schreibt die KI deine Bewerbungen automatisch. "
              "Ein Key reicht – mit zwei oder drei springt die App automatisch um, wenn ein Kontingent leer ist.")
     st.caption("Ohne Key funktioniert SmartResume trotzdem: dann über dein Gemini- oder ChatGPT-Konto per "
