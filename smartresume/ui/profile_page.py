@@ -165,6 +165,7 @@ def _checklist(d: dict, photo: bytes | None) -> list[tuple[str, bool, str]]:
         ("Vor- und Nachname", bool(p["last_name"]), T_PERSONAL),
         ("E-Mail und Telefon", bool(p["email"] and p["phone"]), T_PERSONAL),
         ("Adresse", bool(p["zip_city"]), T_PERSONAL),
+        ("Führerschein", bool(p["driving_license"]), T_PERSONAL),
         ("Bewerbungsfoto", bool(photo), T_PERSONAL),
         ("Berufserfahrung oder Ausbildung", bool(d["experience"] or d["education"]), T_CAREER),
         ("Skills", any(s["items"] for s in d["skills"]), T_SKILLS),
@@ -275,6 +276,18 @@ def _personal(d: dict, new: dict, stored: dict) -> None:
         p["phone"] = c2.text_input("Telefon *", d["personal"]["phone"], key=_k("phone"))
         p["street"] = c1.text_input("Straße & Nr.", d["personal"]["street"], key=_k("street"))
         p["zip_city"] = c2.text_input("PLZ & Ort", d["personal"]["zip_city"], key=_k("zip"), placeholder="z. B. 50667 Köln")
+        dl = d["personal"]["driving_license"]
+        c1, c2 = st.columns(2)
+        has_dl = c1.radio("Führerschein *", ["Ja", "Nein"], horizontal=True,
+                          index=(1 if dl == "Nein" else 0 if dl else None), key=_k("has_driving_license"))
+        if has_dl == "Ja":
+            p["driving_license"] = c2.text_input(
+                "Welche Führerscheinklasse? *", "" if dl == "Nein" else dl,
+                key=_k("driving_license_class"), placeholder="z. B. Klasse B, BE, A2").strip()
+        elif has_dl == "Nein":
+            p["driving_license"] = "Nein"
+        else:
+            p["driving_license"] = ""
 
     st.markdown("##### Links & Social Media")
     st.caption("Plattform wählen und Link einfügen. In der Bewerbungsmappe erscheinen sie als anklickbare Icons auf "

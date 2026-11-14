@@ -33,6 +33,7 @@ def empty_profile() -> dict:
             "phone": "",
             "street": "",
             "zip_city": "",
+            "driving_license": "",  # "" = offen (Pflicht), "Nein" = keiner, sonst Klasse(n) z. B. "Klasse B"
             "links": [],  # [{"label": "Portfolio", "url": "https://..."}]
         },
         "summary": "",
@@ -125,7 +126,7 @@ def normalize_profile(data: dict | None) -> dict:
     p = empty_profile()
 
     pers = data.get("personal") or {}
-    for k in ("headline", "email", "phone", "street", "zip_city"):
+    for k in ("headline", "email", "phone", "street", "zip_city", "driving_license"):
         p["personal"][k] = _s(pers.get(k))
     first, last = _s(pers.get("first_name")), _s(pers.get("last_name"))
     if not (first or last):          # ältere Profile/KI-Antworten kennen nur „name“
@@ -294,6 +295,8 @@ def is_profile_usable(profile: dict) -> list[str]:
         missing.append("E-Mail")
     if not pers.get("phone"):
         missing.append("Telefonnummer")
+    if not pers.get("driving_license"):
+        missing.append("Führerschein (Ja/Nein + Klasse)")
     if not profile.get("experience") and not profile.get("education"):
         missing.append("mindestens eine Berufserfahrung oder Ausbildung")
     return missing
@@ -347,6 +350,8 @@ def compact_profile_text(profile: dict) -> str:
     lines = []
     pers = profile["personal"]
     lines.append(f"NAME: {pers['name']}" + (f" | {pers['headline']}" if pers["headline"] else ""))
+    if pers.get("driving_license"):
+        lines.append(f"FÜHRERSCHEIN: {pers['driving_license']}")
     if profile.get("summary"):
         lines.append(f"PROFIL: {profile['summary']}")
     if profile["experience"]:
@@ -443,7 +448,8 @@ def from_legacy_master(d: dict) -> dict:
 
     return normalize_profile({
         "personal": {"name": info.get("name"), "email": info.get("email"), "phone": info.get("phone"),
-                     "street": street, "zip_city": zip_city, "links": links},
+                     "street": street, "zip_city": zip_city,
+                     "driving_license": info.get("driving_license", ""), "links": links},
         "summary": d.get("professional_summary"),
         "experience": experience,
         "education": education,

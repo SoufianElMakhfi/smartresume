@@ -3,6 +3,7 @@
     "name": "Max Mustermann",
     "email": "max.mustermann@example.com",
     "phone": "+49 123 4567890",
+    "driving_license": "Klasse B",
     "location": "Musterstraße 1, 50667 Köln",
     "linkedin": "https://www.linkedin.com/in/max-mustermann-example/",
     "github": "https://github.com/example",

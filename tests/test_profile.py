@@ -37,8 +37,12 @@ def test_usable_check():
     p["education"] = [{"institution": "Schule"}]
     assert any("Nachname" in m for m in is_profile_usable(p))   # nur Vorname reicht nicht
     p["personal"]["name"] = "Anna Beispiel"
-    assert is_profile_usable(p) == ["Telefonnummer"]                  # Telefon ist Pflicht
+    assert is_profile_usable(p) == ["Telefonnummer", "Führerschein (Ja/Nein + Klasse)"]
     p["personal"]["phone"] = "0151 2345678"
+    assert is_profile_usable(p) == ["Führerschein (Ja/Nein + Klasse)"]
+    p["personal"]["driving_license"] = "Nein"
+    assert is_profile_usable(p) == []
+    p["personal"]["driving_license"] = "Klasse B"
     assert is_profile_usable(p) == []
 
 
