@@ -611,7 +611,7 @@ def _send_form(g: dict, s: dict, prof: dict, docs: list[tuple[bytes, str]]) -> N
             c1.caption("Outlook, Thunderbird, Apple Mail: Datei öffnen – Empfänger, Text und PDF sind drin, nur "
                        "noch senden. (Thunderbird: „Als neu bearbeiten“.)")
             c2.link_button("Gmail-Entwurf öffnen", mailer.gmail_compose_url(to, subject, body),
-                           use_container_width=True, disabled=not ok_to, icon=":material/drafts:")
+                           use_container_width=True, icon=":material/drafts:")
             c2.caption("Gmail im Browser: Text ist vorausgefüllt, die PDF" + ("s" if len(docs) > 1 else "") +
                        " unten herunterladen und anhängen.")
 

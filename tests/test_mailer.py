@@ -30,6 +30,8 @@ def test_default_texts():
 def test_compose_urls():
     q = parse_qs(urlparse(mailer.gmail_compose_url("a@b.de", "Bewerbung & mehr", "Zeile 1\nZeile 2")).query)
     assert q["to"] == ["a@b.de"] and q["su"] == ["Bewerbung & mehr"] and q["body"] == ["Zeile 1\nZeile 2"]
+    q_empty = parse_qs(urlparse(mailer.gmail_compose_url("", "Betreff", "Text")).query)
+    assert "to" not in q_empty and q_empty["su"] == ["Betreff"] and q_empty["body"] == ["Text"]
     assert mailer.mailto_url("a@b.de", "Hi du", "x").startswith("mailto:a%40b.de?subject=Hi%20du&body=x")
 
 

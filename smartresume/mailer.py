@@ -153,8 +153,10 @@ def default_body(structured: dict, profile: dict) -> str:
 
 
 def gmail_compose_url(to: str, subject: str, body: str) -> str:
-    return "https://mail.google.com/mail/?" + urlencode({"view": "cm", "fs": 1, "to": to, "su": subject,
-                                                         "body": body})
+    params = {"view": "cm", "fs": 1, "su": subject, "body": body}
+    if valid_email(to):
+        params["to"] = to.strip()
+    return "https://mail.google.com/mail/?" + urlencode(params)
 
 
 def mailto_url(to: str, subject: str, body: str) -> str:
