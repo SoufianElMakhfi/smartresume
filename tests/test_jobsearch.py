@@ -145,6 +145,11 @@ def test_keywords_and_hits():
 def test_already_applied():
     job = js.normalize(RAW)
     assert js.already_applied(job, [{"company": "Beispiel GmbH", "job_title": "Werkstudent IT-Support (m/w/d)"}])
+    assert js.already_applied(job, [{"company": "X", "job_title": "Y", "job_url": job["url"], "status": "Beworben"}])
+    assert not js.already_applied(job, [{"company": "Beispiel GmbH", "job_title": "Werkstudent IT-Support",
+                                         "status": "Erstellt"}])
+    assert not js.already_applied(job, [{"company": "Beispiel GmbH", "job_title": "Werkstudent IT-Support",
+                                         "status": "Zurückgezogen"}])
     assert not js.already_applied(job, [{"company": "Andere AG", "job_title": "Werkstudent IT-Support"}])
 
 

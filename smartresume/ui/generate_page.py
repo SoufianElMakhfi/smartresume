@@ -26,8 +26,8 @@ def reset() -> None:
         st.session_state.pop(k, None)
 
 
-def load_application(app: dict) -> None:
-    """Gespeicherte Bewerbung zum Bearbeiten öffnen (aus 'Meine Bewerbungen')."""
+def load_application(app: dict, step: str = "review") -> None:
+    """Gespeicherte Bewerbung zum Bearbeiten oder Versenden öffnen (aus 'Meine Bewerbungen')."""
     reset()
     s = app["structured"] or {}
     s.setdefault("cover_letter", {})
@@ -38,7 +38,9 @@ def load_application(app: dict) -> None:
         "extra_info": "", "tokens": 0, "model": "", "show_photo": True, "show_links": True, "log": [],
     }
     st.session_state.gen_app_id = app["id"]
-    st.session_state.gen_step = "review"
+    if step == "done" and app.get("pdf_bytes"):
+        st.session_state.gen_pdf = app["pdf_bytes"]
+    st.session_state.gen_step = step
 
 
 def render_page() -> None:

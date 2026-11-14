@@ -162,8 +162,11 @@ def _card(job: dict, hits: list[str], rating: dict | None, applied: bool) -> Non
         if hits:
             c1.caption("Passt zu deinem Profil: " + ", ".join(hits[:8]))
         b1, b2 = st.columns(2)
-        if b1.button("Bewerbung erstellen", key=f"apply_{job['ref']}", type="primary", use_container_width=True,
-                     icon=":material/edit_document:"):
+        if applied:
+            b1.button("Bereits beworben", key=f"apply_{job['ref']}", disabled=True, use_container_width=True,
+                      icon=":material/task_alt:")
+        elif b1.button("Bewerbung erstellen", key=f"apply_{job['ref']}", type="primary", use_container_width=True,
+                       icon=":material/edit_document:"):
             _apply(job)
         b2.link_button("Anzeige öffnen", job["url"], use_container_width=True, icon=":material/open_in_new:")
         text = st.session_state.jobs_texts.get(job["ref"])

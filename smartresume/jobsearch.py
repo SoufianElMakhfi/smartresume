@@ -562,8 +562,13 @@ def keyword_hits(text: str, keywords: list[str]) -> list[str]:
 def already_applied(job: dict, applications: list[dict]) -> bool:
     def norm(s):
         return re.sub(r"\W+", " ", (s or "").lower()).strip()
+    url = (job.get("url") or "").strip()
     c, t = norm(job["company"]), norm(job["title"])
     for a in applications:
+        if a.get("status") in ("Erstellt", "Zurückgezogen"):
+            continue
+        if url and (a.get("job_url") or "").strip() == url:
+            return True
         ac, at = norm(a.get("company")), norm(a.get("job_title"))
         if ac and c and (ac in c or c in ac) and at and t and (at[:25] in t or t[:25] in at):
             return True

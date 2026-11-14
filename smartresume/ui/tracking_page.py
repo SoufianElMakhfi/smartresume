@@ -50,16 +50,22 @@ def render() -> None:
                 st.rerun()
             if a["job_url"]:
                 c1.markdown(f":material/link: [Zur Stellenanzeige]({a['job_url']})")
+            detail = db.get_application(uid(), a["id"])
             if a["status"] == "Erstellt":
-                c1.caption("Unterlagen fertig, noch nicht als beworben markiert.")
-                if c1.button("Als beworben markieren", key=f"applied_{a['id']}", icon=":material/task_alt:"):
+                c1.caption("Unterlagen fertig, noch nicht versendet.")
+                s1, s2 = c1.columns(2)
+                if s1.button("Versenden", key=f"send_{a['id']}", type="primary", use_container_width=True,
+                             icon=":material/send:", disabled=not (detail and detail["pdf_bytes"])):
+                    generate_page.load_application(detail, step="done")
+                    go("generate")
+                if s2.button("Als beworben markieren", key=f"applied_{a['id']}", use_container_width=True,
+                             icon=":material/task_alt:"):
                     db.mark_applied(uid(), a["id"])
                     st.rerun()
             notes = st.text_area("Notizen (Ansprechpartner, Gesprächstermine …)", a["notes"] or "",
                                  key=f"notes_{a['id']}", height=80)
             if notes != (a["notes"] or ""):
                 db.update_application(uid(), a["id"], notes=notes)
-            detail = db.get_application(uid(), a["id"])
             if detail and detail["job_text"]:
                 with st.popover("Stellenanzeige", icon=":material/article:"):
                     st.text(detail["job_text"][:6000])
